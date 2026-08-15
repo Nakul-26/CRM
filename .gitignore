@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.next/
+.turbo/
+out/
+coverage/
+*.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+pnpm-lock.yaml.bak
