@@ -121,6 +121,58 @@ describe("CRM Activities (e2e)", () => {
       .expect(404);
   });
 
+  it("scopes activities to a specific opportunity, distinct from other opportunities on the same account", async () => {
+    const org = await registerOrg(app, "Sabre Corp", "sb");
+    const account = await createAccount(app, org.accessToken, "Sabre");
+
+    const oppA = await request(app.getHttpServer())
+      .post("/api/v1/opportunities")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ name: "Renewal", accountId: account.id })
+      .expect(201);
+    const oppB = await request(app.getHttpServer())
+      .post("/api/v1/opportunities")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ name: "Upsell", accountId: account.id })
+      .expect(201);
+
+    const activityA = await request(app.getHttpServer())
+      .post("/api/v1/activities")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ opportunityId: oppA.body.id, type: "call", subject: "Renewal check-in" })
+      .expect(201);
+    expect(activityA.body.opportunityId).toBe(oppA.body.id);
+
+    const listA = await request(app.getHttpServer())
+      .get(`/api/v1/activities?opportunityId=${oppA.body.id}`)
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .expect(200);
+    expect(listA.body.map((a: { id: string }) => a.id)).toEqual([activityA.body.id]);
+
+    const listB = await request(app.getHttpServer())
+      .get(`/api/v1/activities?opportunityId=${oppB.body.id}`)
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .expect(200);
+    expect(listB.body).toHaveLength(0);
+  });
+
+  it("rejects a cross-org opportunityId when logging an activity", async () => {
+    const orgA = await registerOrg(app, "Aviato", "av3");
+    const orgB = await registerOrg(app, "Hooli XYZ", "hx");
+    const accountA = await createAccount(app, orgA.accessToken, "Aviato Corp");
+    const oppA = await request(app.getHttpServer())
+      .post("/api/v1/opportunities")
+      .set("Authorization", `Bearer ${orgA.accessToken}`)
+      .send({ name: "Org A deal", accountId: accountA.id })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post("/api/v1/activities")
+      .set("Authorization", `Bearer ${orgB.accessToken}`)
+      .send({ opportunityId: oppA.body.id, type: "note", subject: "Cross-tenant attempt" })
+      .expect(404);
+  });
+
   it("enforces RBAC: a Member cannot delete an activity", async () => {
     const org = await registerOrg(app, "Kruger Industrial Smoothing", "ks");
     const account = await createAccount(app, org.accessToken, "Smoothing Co");

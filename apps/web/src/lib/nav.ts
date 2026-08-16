@@ -29,31 +29,31 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Leads",
     items: [
-      { label: "All Leads", href: "/leads" },
-      { label: "Lead Sources", href: "/leads/sources" },
-      { label: "Lead Scoring", href: "/leads/scoring" },
+      { label: "All Leads", href: "/leads", permission: "leads.view" },
+      { label: "Lead Sources", href: "/leads/sources", permission: "leads.view" },
+      { label: "Lead Scoring", href: "/leads/scoring", permission: "leads.view" },
     ],
   },
   {
     label: "Sales",
     items: [
-      { label: "Opportunities", href: "/sales/opportunities" },
-      { label: "Pipeline", href: "/sales/pipeline" },
-      { label: "Forecast", href: "/sales/forecast" },
+      { label: "Opportunities", href: "/sales/opportunities", permission: "opportunities.view" },
+      { label: "Pipeline", href: "/sales/pipeline", permission: "opportunities.view" },
+      { label: "Forecast", href: "/sales/forecast", permission: "opportunities.view" },
     ],
   },
   {
     label: "Quotations",
     items: [
-      { label: "Quotes", href: "/quotes" },
-      { label: "Templates", href: "/quotes/templates" },
+      { label: "Quotes", href: "/quotes", permission: "quotes.view" },
+      { label: "Templates", href: "/quotes/templates", permission: "quotes.view" },
     ],
   },
   {
     label: "Products",
     items: [
-      { label: "Products", href: "/products" },
-      { label: "Pricing", href: "/products/pricing" },
+      { label: "Products", href: "/products", permission: "products.view" },
+      { label: "Pricing", href: "/products/pricing", permission: "products.view" },
     ],
   },
   {

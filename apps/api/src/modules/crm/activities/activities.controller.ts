@@ -30,9 +30,10 @@ export class ActivitiesController {
     @CurrentUser() user: AuthenticatedUser,
     @Query("accountId") accountId?: string,
     @Query("contactId") contactId?: string,
+    @Query("opportunityId") opportunityId?: string,
     @Query("type") type?: string,
   ) {
-    return this.activities.list(user.organizationId, { accountId, contactId, type });
+    return this.activities.list(user.organizationId, { accountId, contactId, opportunityId, type });
   }
 
   @Get(":id")

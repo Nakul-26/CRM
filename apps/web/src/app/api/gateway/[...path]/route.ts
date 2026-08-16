@@ -27,11 +27,17 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
     cache: "no-store",
   });
 
-  const responseBody = await apiRes.text();
-  return new NextResponse(responseBody, {
-    status: apiRes.status,
-    headers: { "content-type": apiRes.headers.get("content-type") ?? "application/json" },
-  });
+  const contentType = apiRes.headers.get("content-type") ?? "application/json";
+  const headers: Record<string, string> = { "content-type": contentType };
+  const contentDisposition = apiRes.headers.get("content-disposition");
+  if (contentDisposition) headers["content-disposition"] = contentDisposition;
+
+  // Binary responses (e.g. PDF downloads) must not round-trip through .text() —
+  // that re-encodes bytes as UTF-8 and corrupts them. Only JSON/text bodies do.
+  const isText = contentType.startsWith("application/json") || contentType.startsWith("text/");
+  const responseBody = isText ? await apiRes.text() : await apiRes.arrayBuffer();
+
+  return new NextResponse(responseBody, { status: apiRes.status, headers });
 }
 
 type RouteContext = { params: Promise<{ path: string[] }> };

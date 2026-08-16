@@ -4,3 +4,7 @@ export * from "./errors";
 export * from "./auth";
 export * from "./identity";
 export * from "./crm";
+export * from "./leads";
+export * from "./sales";
+export * from "./products";
+export * from "./quotes";

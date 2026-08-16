@@ -9,6 +9,10 @@ import { SharedModule } from "./shared/shared.module";
 import { RequestContextMiddleware } from "./shared/context/request-context.middleware";
 import { IdentityModule } from "./modules/identity/identity.module";
 import { CrmModule } from "./modules/crm/crm.module";
+import { SalesModule } from "./modules/sales/sales.module";
+import { LeadsModule } from "./modules/leads/leads.module";
+import { ProductsModule } from "./modules/products/products.module";
+import { QuotesModule } from "./modules/quotes/quotes.module";
 import { HealthModule } from "./modules/health/health.module";
 
 @Module({
@@ -20,6 +24,10 @@ import { HealthModule } from "./modules/health/health.module";
     SharedModule,
     IdentityModule,
     CrmModule,
+    SalesModule,
+    LeadsModule,
+    ProductsModule,
+    QuotesModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

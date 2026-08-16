@@ -8,10 +8,24 @@ for why, and how it evolves into microservices later if that's ever needed).
 **Phase 1:** Identity & Access — organizations, users, teams, roles,
 permission-based RBAC, JWT auth, tenant isolation, audit logging.
 
-**Phase 2 (current):** CRM — accounts, contacts, activities, a customer
-timeline, and full-text search. See
-[docs/architecture/overview.md](docs/architecture/overview.md) for the
-full picture and [docs/architecture/overview.md#phase-2-scope](docs/architecture/overview.md#phase-2-scope)
+**Phase 2:** CRM — accounts, contacts, activities, a customer timeline, and
+full-text search.
+
+**Phase 3:** Leads — lead CRUD, configurable scoring rules, sources,
+qualification, and conversion into Accounts/Contacts (and, as of Phase 4,
+an Opportunity) with duplicate detection.
+
+**Phase 4:** Sales Pipeline — opportunities, org-configurable
+pipelines/stages with a Kanban board, forecast/analytics, and
+opportunity-scoped activities.
+
+**Phase 5 (current):** Quotations — a product catalog with volume-based
+price tiers, versioned quotes (locked once sent, revised via explicit new
+versions), reusable templates, on-demand PDF generation, and a public,
+unauthenticated share-link flow for a customer to view/accept/reject a
+quote. See [docs/architecture/overview.md](docs/architecture/overview.md)
+for the full picture and
+[docs/architecture/overview.md#phase-5-scope](docs/architecture/overview.md#phase-5-scope)
 for exactly what's built vs. deferred.
 
 ## Prerequisites
@@ -59,7 +73,7 @@ same Postgres container automatically; it won't touch your dev data.
 ```text
 apps/
   web/     Next.js app — the only thing the browser talks to
-  api/     NestJS modular monolith (identity, crm modules)
+  api/     NestJS modular monolith (identity, crm, leads, sales, products, quotes modules)
 packages/
   contracts/   Zod schemas + shared TS types (auth, permissions, events, errors)
   config/      Zod-validated environment loading

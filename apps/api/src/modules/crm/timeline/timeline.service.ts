@@ -26,6 +26,24 @@ function summarizeEvent(eventType: string, payload: Record<string, unknown> | nu
       return "Contact details were updated";
     case "contact.deleted":
       return "Contact was deleted";
+    case "lead.converted":
+      return "Converted from a lead";
+    case "opportunity.created":
+      return `Opportunity "${payload?.name ?? ""}" was created`;
+    case "opportunity.stage_changed":
+      return "Opportunity moved to a new stage";
+    case "opportunity.won":
+      return "Opportunity was won";
+    case "opportunity.lost":
+      return "Opportunity was lost";
+    case "quote.created":
+      return "Quote was created";
+    case "quote.sent":
+      return "Quote was sent";
+    case "quote.accepted":
+      return "Quote was accepted";
+    case "quote.rejected":
+      return "Quote was rejected";
     default:
       return eventType;
   }

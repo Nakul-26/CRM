@@ -55,6 +55,7 @@ export interface ActivityDto {
   organizationId: string;
   accountId: string | null;
   contactId: string | null;
+  opportunityId: string | null;
   type: ActivityType;
   subject: string;
   body: string | null;
@@ -137,14 +138,15 @@ export const createActivitySchema = z
   .object({
     accountId: z.string().uuid().optional(),
     contactId: z.string().uuid().optional(),
+    opportunityId: z.string().uuid().optional(),
     type: z.enum(ACTIVITY_TYPES),
     subject: z.string().trim().min(1).max(200),
     body: z.string().trim().max(5000).optional(),
     dueAt: z.string().datetime().optional(),
     ownerId: z.string().uuid().optional(),
   })
-  .refine((input) => Boolean(input.accountId || input.contactId), {
-    message: "Either accountId or contactId is required",
+  .refine((input) => Boolean(input.accountId || input.contactId || input.opportunityId), {
+    message: "One of accountId, contactId, or opportunityId is required",
     path: ["accountId"],
   });
 export type CreateActivityInput = z.infer<typeof createActivitySchema>;

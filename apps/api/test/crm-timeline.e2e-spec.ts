@@ -78,6 +78,85 @@ describe("CRM Timeline (e2e)", () => {
     void contact; // created above to also emit a contact.created timeline event
   });
 
+  it("shows opportunity.created/won events on the account timeline (proves the TIMELINE_EVENT_TYPES extension)", async () => {
+    const org = await registerOrg(app, "Duck Phillips Sales", "dps");
+
+    const account = await request(app.getHttpServer())
+      .post("/api/v1/accounts")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ name: "Jaguar Motors" })
+      .expect(201);
+
+    const opportunity = await request(app.getHttpServer())
+      .post("/api/v1/opportunities")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ name: "Jaguar Ad Campaign", accountId: account.body.id })
+      .expect(201);
+
+    const pipelines = await request(app.getHttpServer())
+      .get("/api/v1/pipelines")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .expect(200);
+    const stages = await request(app.getHttpServer())
+      .get(`/api/v1/pipelines/${pipelines.body[0].id}/stages`)
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .expect(200);
+    const closedWon = stages.body.find((s: { name: string }) => s.name === "Closed Won");
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/opportunities/${opportunity.body.id}/stage`)
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ stageId: closedWon.id })
+      .expect(201);
+
+    const timeline = await request(app.getHttpServer())
+      .get(`/api/v1/accounts/${account.body.id}/timeline`)
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .expect(200);
+
+    const types = timeline.body.map((e: { type: string }) => e.type);
+    expect(types).toEqual(expect.arrayContaining(["opportunity.created", "opportunity.stage_changed", "opportunity.won"]));
+
+    const createdEntry = timeline.body.find((e: { type: string }) => e.type === "opportunity.created");
+    expect(createdEntry.summary).toBe('Opportunity "Jaguar Ad Campaign" was created');
+  });
+
+  it("shows quote.created/sent/accepted events on the account timeline (third proof of the TIMELINE_EVENT_TYPES extension)", async () => {
+    const org = await registerOrg(app, "Sterling Cooper Quotes", "scq");
+
+    const account = await request(app.getHttpServer())
+      .post("/api/v1/accounts")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ name: "Lucky Strike Tobacco" })
+      .expect(201);
+
+    const quote = await request(app.getHttpServer())
+      .post("/api/v1/quotes")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ accountId: account.body.id, lineItems: [{ name: "Ad Package", quantity: 1, unitPrice: 5000 }] })
+      .expect(201);
+
+    const sent = await request(app.getHttpServer())
+      .post(`/api/v1/quotes/${quote.body.quote.id}/send`)
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .expect(201);
+
+    await request(app.getHttpServer()).post(`/api/v1/public/quotes/${sent.body.quote.shareToken}/accept`).expect(201);
+
+    const timeline = await request(app.getHttpServer())
+      .get(`/api/v1/accounts/${account.body.id}/timeline`)
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .expect(200);
+
+    const types = timeline.body.map((e: { type: string }) => e.type);
+    expect(types).toEqual(expect.arrayContaining(["quote.created", "quote.sent", "quote.accepted"]));
+
+    const sentEntry = timeline.body.find((e: { type: string }) => e.type === "quote.sent");
+    expect(sentEntry.summary).toBe("Quote was sent");
+    const acceptedEntry = timeline.body.find((e: { type: string }) => e.type === "quote.accepted");
+    expect(acceptedEntry.summary).toBe("Quote was accepted");
+  });
+
   it("404s when an org requests another org's account timeline", async () => {
     const orgA = await registerOrg(app, "Cutler Gleason & Chaough", "cg");
     const orgB = await registerOrg(app, "Duck Phillips CRM", "dp");

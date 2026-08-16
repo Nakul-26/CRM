@@ -6,7 +6,17 @@ module into a real service later. See [ADR 0002](../decisions/0002-crm-phase2-sc
 for what Phase 2 (CRM) deliberately left out, and
 [docs/plans/0002-phase2-crm-plan.md](../plans/0002-phase2-crm-plan.md) for
 the full Phase 2 implementation plan (data model, timeline/search design,
-sequencing).
+sequencing). See [docs/plans/0003-phase3-leads-plan.md](../plans/0003-phase3-leads-plan.md)
+for the Phase 3 (Leads) implementation plan, and
+[ADR 0003](../decisions/0003-leads-phase3-scope.md) for what it deliberately
+left out (and the one place it deliberately crosses a module boundary). See
+[docs/plans/0004-phase4-sales-plan.md](../plans/0004-phase4-sales-plan.md)
+for the Phase 4 (Sales Pipeline) implementation plan, and
+[ADR 0004](../decisions/0004-sales-phase4-scope.md) for what it deliberately
+left out. See [docs/plans/0005-phase5-quotations-plan.md](../plans/0005-phase5-quotations-plan.md)
+for the Phase 5 (Quotations) implementation plan, and
+[ADR 0005](../decisions/0005-quotations-phase5-scope.md) for what it
+deliberately left out.
 
 ## System shape
 
@@ -21,9 +31,13 @@ packages/*      Code shared between web and api (types, validation, config).
 apps/api/src/modules/
   identity/       organizations, users, teams, roles, permissions, auth
   crm/            accounts, contacts, activities, timeline, search
+  leads/          lead CRUD, scoring rules, qualification, conversion
+  sales/          opportunities, pipelines, stages, forecast/analytics
+  products/       product catalog, volume-based price tiers
+  quotes/         quotes, versions, templates, PDF, public acceptance
   shared/         tenant context, event bus, audit listener, guards
-  (leads, sales, quotes, products, support, subscriptions,
-   notifications — added in later phases, same pattern)
+  (support, subscriptions, notifications
+   — added in later phases, same pattern)
 ```
 
 Every module follows: `Controller -> Application Service -> Domain Logic ->
@@ -34,7 +48,8 @@ exported service; cross-module side effects go through domain events.
 ## Data ownership
 
 One Postgres database (`sales_platform`), one Postgres **schema per domain
-module** (`identity`, later `crm`, `leads`, ...). This gives each module a
+module** (`identity`, `crm`, `leads`, `sales`, `products`, `quotes`, ...).
+This gives each module a
 real, enforced data boundary (a `crm` module literally cannot query
 `identity.users` without going through the identity module's service) while
 staying one physical database to run and back up. If a module ever needs to
@@ -80,6 +95,13 @@ Phase 1 events: `organization.created`, `user.created`, `user.invited`,
 `user.role_assigned`, `user.login_succeeded`, `user.login_failed`.
 Phase 2 events: `account.created/updated/deleted`,
 `contact.created/updated/deleted`, `activity.logged/updated/deleted`.
+Phase 3 events: `lead.created/updated/status_changed/converted/deleted`,
+`lead.scoring_rule_created/updated/deleted`.
+Phase 4 events: `opportunity.created/updated/stage_changed/won/lost/deleted`,
+`pipeline.created/updated/deleted`, `stage.created/updated/deleted`.
+Phase 5 events: `product.created/updated/deleted`,
+`quote.created/updated/sent/accepted/rejected/expired/revised/deleted`,
+`quote_template.created/updated/deleted`.
 
 ## Audit
 
@@ -122,3 +144,80 @@ Drizzle has no `tsquery`/`@@` operator support). New permissions:
 in Phase 1). Documents and custom fields were deliberately deferred — see
 [ADR 0002](../decisions/0002-crm-phase2-scope.md). Leads, Sales, Quotes,
 etc. are Phase 3+, per the brief's own phased plan.
+
+## Phase 3 scope
+
+Leads: lead CRUD, a configurable scoring rule engine (`field` + `operator`
++ `value` + `points`, evaluated as a pure function — see
+`evaluate-lead-score.ts`, the one unit-tested domain module so far, per
+Section 30's explicit call for lead-scoring unit tests), fixed lead
+sources with a per-source breakdown page, a qualification state machine
+(`New/Contacted/Qualified/Unqualified/Converted`, guarded by
+`assertValidLeadTransition`), and conversion into a reused-or-created
+Account + Contact (duplicate detection by case-insensitive exact
+name/email match) inside one cross-schema transaction — `LeadsService`'s
+one deliberate exception to the "cross-module writes via events only"
+rule above, documented in
+[ADR 0003](../decisions/0003-leads-phase3-scope.md). `lead.converted` was
+also added to `TIMELINE_EVENT_TYPES`, the first real use of the extension
+point Phase 2's `TimelineService` was built for — a converted lead's
+account timeline shows the conversion with zero changes to the timeline
+query itself. Scoring rules can't reference behavioral signals like page
+visits — recorded as a deliberate scope cut in ADR 0003, not a gap to
+silently work around. (Conversion not creating an Opportunity was also
+recorded there as deferred — Phase 4 closes it, see below.)
+
+## Phase 4 scope
+
+Sales Pipeline: Opportunities, org-configurable Pipelines/Stages (each org
+gets a lazily-seeded default pipeline with the brief's 6 example stages —
+`PipelinesService.getOrCreateDefault()` — the first configurable-workflow
+feature in the system, extending Leads' "configurable scoring rules"
+precedent), a Kanban board (`/sales/pipeline`, native HTML5 drag-and-drop,
+no new dependency), a Forecast/analytics page (`/sales/forecast`, using
+Recharts — installed since Phase 1 per the brief's stack list, unused
+until now), and Activities scoped to a specific opportunity (extends
+`crm.activities` with a nullable, unconstrained `opportunity_id` — see
+[ADR 0004](../decisions/0004-sales-phase4-scope.md) for why it's
+unconstrained). Stage moves have no fixed transition graph (stages are
+user-defined) — the only guards are "stay within the opportunity's own
+pipeline" and "closed (won/lost-flagged) stages are terminal," per §35.
+Four `opportunity.*` event types were added to `TIMELINE_EVENT_TYPES`, the
+second real use of that extension point after `lead.converted`. Lead
+conversion (`LeadsService.convert()`) now also creates an Opportunity,
+extending its existing cross-schema-transaction exception from ADR 0003
+rather than introducing a new one — closing the gap that ADR explicitly
+deferred. Products/line-items and file attachments on an Opportunity are
+not modeled yet (Phase 5 and undetermined, respectively — Phase 5 closes
+the products half, see below), and deeper dashboards/reporting stay out of
+scope until Phase 8 — both recorded in
+[ADR 0004](../decisions/0004-sales-phase4-scope.md).
+
+## Phase 5 scope
+
+Quotations: two new modules, `products` (catalog + volume-based price
+tiers — `ProductsService.priceFor()`, a small config-driven suggestion, not
+a discount rules engine) and `quotes` (quotes, versions, templates, PDF,
+public acceptance). A quote's line items snapshot the product's name/price
+at add-time rather than live-joining it, so a later price change or
+product deletion never changes an already-created quote. While `draft`, a
+quote is freely edited in place; once `sent`, it's locked and can only be
+reopened via `POST /quotes/:id/revise`, which clones the latest version
+into a new one and preserves the old one immutably — the first genuinely
+versioned/immutable document in the system, a deliberate departure from
+every prior module's plain-mutable-PATCH pattern. `POST /quotes/:id/send`
+generates a share link rather than sending an email (no SMTP dispatch code
+exists yet — that's Phase 6); `PublicQuotesController` is the first
+unauthenticated, customer-facing surface in the app, looked up by an
+opaque `shareToken` rather than by id+JWT, with events published via an
+explicit `organizationId` since there's no request context to source one
+from. PDFs (`pdfkit`) are generated on demand from data already in
+Postgres, not stored — `quote-pdf.ts`'s `buildQuotePdf()` is a pure
+function over a plain data snapshot, unit-tested the same way as
+`evaluate-lead-score.ts`. Four `quote.*` event types were added to
+`TIMELINE_EVENT_TYPES`, the third real use of that extension point after
+`lead.converted` and Phase 4's `opportunity.*` events. Accepting a quote
+does not auto-advance its linked Opportunity's stage — recorded as a
+Phase-8-automation deferral, not a silent gap. All of the above, plus
+lazy (touch-on-access) quote expiry and globally-sequential quote numbers,
+are recorded in [ADR 0005](../decisions/0005-quotations-phase5-scope.md).

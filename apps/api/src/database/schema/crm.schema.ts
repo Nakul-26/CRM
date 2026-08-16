@@ -100,6 +100,11 @@ export const activities = crmSchema.table(
       .references(() => organizations.id, { onDelete: "cascade" }),
     accountId: uuid("account_id").references(() => accounts.id, { onDelete: "cascade" }),
     contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "cascade" }),
+    // No .references() — sales.schema.ts already imports accounts/contacts
+    // from this file, so a DB-level FK back to sales.opportunities would be
+    // a circular file import. Validated at the application layer instead
+    // (same precedent as createdBy/updatedBy, also unconstrained uuids).
+    opportunityId: uuid("opportunity_id"),
     // "call" | "email" | "meeting" | "note" | "task" — enforced at the zod layer.
     type: text("type").notNull(),
     subject: text("subject").notNull(),
@@ -114,6 +119,7 @@ export const activities = crmSchema.table(
     orgIdx: index("activities_org_idx").on(table.organizationId),
     accountIdx: index("activities_account_idx").on(table.accountId),
     contactIdx: index("activities_contact_idx").on(table.contactId),
+    opportunityIdx: index("activities_opportunity_idx").on(table.opportunityId),
     // Timeline is always "most recent first" — index the sort key directly.
     accountCreatedIdx: index("activities_account_created_idx").on(table.accountId, table.createdAt),
   }),

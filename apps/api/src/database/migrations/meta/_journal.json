@@ -15,6 +15,27 @@
       "when": 1786767434529,
       "tag": "0001_supreme_rockslide",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786771655077,
+      "tag": "0002_open_archangel",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786797983104,
+      "tag": "0003_amusing_piledriver",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786856352703,
+      "tag": "0004_late_demogoblin",
+      "breakpoints": true
     }
   ]
 }
