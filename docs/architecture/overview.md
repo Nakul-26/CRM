@@ -19,6 +19,9 @@ for the Phase 5 (Quotations) implementation plan, and
 deliberately left out. See [docs/plans/0006-phase6-support-plan.md](../plans/0006-phase6-support-plan.md)
 for the Phase 6 (Support) implementation plan, and
 [ADR 0006](../decisions/0006-support-phase6-scope.md) for what it
+deliberately left out. See [docs/plans/0007-phase7-subscriptions-plan.md](../plans/0007-phase7-subscriptions-plan.md)
+for the Phase 7 (Subscriptions) implementation plan, and
+[ADR 0007](../decisions/0007-subscriptions-phase7-scope.md) for what it
 deliberately left out.
 
 ## System shape
@@ -39,9 +42,9 @@ apps/api/src/modules/
   products/       product catalog, volume-based price tiers
   quotes/         quotes, versions, templates, PDF, public acceptance
   support/        tickets, SLA policies, knowledge base
+  subscriptions/  plans, subscriptions, renewal reminders (scheduled job)
   shared/         tenant context, event bus, audit listener, guards,
                   mailer/mail listener (email dispatch)
-  (subscriptions  — added in a later phase, same pattern)
 ```
 
 Every module follows: `Controller -> Application Service -> Domain Logic ->
@@ -53,7 +56,7 @@ exported service; cross-module side effects go through domain events.
 
 One Postgres database (`sales_platform`), one Postgres **schema per domain
 module** (`identity`, `crm`, `leads`, `sales`, `products`, `quotes`,
-`support`, ...).
+`support`, `subscriptions`).
 This gives each module a
 real, enforced data boundary (a `crm` module literally cannot query
 `identity.users` without going through the identity module's service) while
@@ -110,6 +113,9 @@ Phase 5 events: `product.created/updated/deleted`,
 Phase 6 events: `ticket.created/updated/status_changed/assigned/
 comment_added/deleted`, `sla_policy.created/updated/deleted`,
 `kb_article.created/updated/published/deleted`.
+Phase 7 events: `plan.created/updated/deleted`,
+`subscription.created/updated/cancelled/renewed/lapsed/deleted/
+renewal_reminder_sent`.
 
 ## Audit
 
@@ -127,7 +133,7 @@ of this same table rather than maintaining its own history.
 |----------------------|-----------------------------------------------------------|
 | RabbitMQ              | A module is actually split into its own deployed service. |
 | Keycloak / OIDC        | External SSO customers are a real, committed requirement.  |
-| Temporal               | A workflow needs durable multi-day orchestration with retries beyond what a scheduled job table covers. |
+| Temporal               | A workflow needs durable multi-day orchestration with retries beyond what a scheduled job table covers. Phase 7's renewal reminders confirmed a Postgres job table + `@nestjs/schedule` is still enough — see [ADR 0007](../decisions/0007-subscriptions-phase7-scope.md). |
 | OpenSearch             | Postgres full-text search stops being fast enough at real data volume. |
 | Separate databases per module | A module needs independent scaling/ownership by a separate team. |
 
@@ -262,3 +268,36 @@ use of that extension point after `lead.converted`, Phase 4's
 email-to-ticket parsing (a customer replying by email to add a ticket
 comment) is out of scope — recorded in ADR 0006 as a materially bigger,
 deliberately deferred feature.
+
+## Phase 7 scope
+
+Subscriptions: Plans, Subscriptions, and Renewals — an internal
+subscription-lifecycle tracker, not a billing system (no payment
+processing at all this phase — see
+[ADR 0007](../decisions/0007-subscriptions-phase7-scope.md)). A
+subscription snapshots its plan's name/price/billing interval at creation
+time, the same "snapshot, not live reference" reasoning used for quote
+line items (ADR 0005) and ticket SLA due-dates (ADR 0006); a later plan
+price edit never changes an existing subscription's rate, and there's no
+plan upgrade/downgrade path yet. Status is a small fixed set (`active`/
+`lapsed`/`cancelled` — no `trialing`, a deliberate scope cut): lapsing is
+lazy and read-time, reusing `QuotesService.expireIfDue()`'s exact
+"touch-on-access" pattern via `subscription-lapse.ts`'s pure, unit-tested
+`isLapseDue()`; `cancel`/`renew` are explicit actions checked inline,
+closer to Quotes' `send`/`accept`/`reject` than to Leads/Tickets' generic
+transition-map guard, since there are only two branchy actions here.
+Renewal reminders are the first scheduled/background process in the
+codebase: a `renewal_reminders` Postgres job table, polled every 15
+minutes by `@nestjs/schedule`'s `@Cron` (`RenewalsScheduler` →
+`RenewalsService.processDueReminders()`), confirming ADR 0001's own
+"a scheduled job table covers renewal reminders" call rather than reaching
+for Redis/BullMQ/Temporal. The scheduler publishes its own enriched event
+with an explicit `organizationId` (there's no request context on a timer
+tick — `DomainEventBus.publish()` already supported this) and a fourth
+`MailListener` handler sends the actual email, keeping mail-dispatch logic
+centralized exactly as Phase 6 set it up. `subscriptions.manage` — reserved
+since Phase 1 with no defined meaning — now narrows to Plan mutations
+only, continuing Phase 6's `support.tickets.manage` narrowing move. Four
+`subscription.*` event types were added to `TIMELINE_EVENT_TYPES`, the
+fifth real use of that extension point after `lead.converted`, Phase 4's
+`opportunity.*`, Phase 5's `quote.*`, and Phase 6's `ticket.*` events.

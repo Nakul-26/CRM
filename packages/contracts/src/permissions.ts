@@ -65,6 +65,8 @@ export const PERMISSIONS = [
   "support.kb.delete",
   "subscriptions.view",
   "subscriptions.create",
+  "subscriptions.edit",
+  "subscriptions.delete",
   "subscriptions.manage",
 ] as const;
 
@@ -110,5 +112,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]> 
     "support.tickets.edit",
     "support.kb.view",
     "subscriptions.view",
+    "subscriptions.create",
+    "subscriptions.edit",
   ],
 };

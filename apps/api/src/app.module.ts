@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { EventEmitterModule } from "@nestjs/event-emitter";
+import { ScheduleModule } from "@nestjs/schedule";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { APP_GUARD } from "@nestjs/core";
 import { loadApiEnv } from "@sales-platform/config";
@@ -14,12 +15,14 @@ import { LeadsModule } from "./modules/leads/leads.module";
 import { ProductsModule } from "./modules/products/products.module";
 import { QuotesModule } from "./modules/quotes/quotes.module";
 import { SupportModule } from "./modules/support/support.module";
+import { SubscriptionsModule } from "./modules/subscriptions/subscriptions.module";
 import { HealthModule } from "./modules/health/health.module";
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [() => loadApiEnv()] }),
     EventEmitterModule.forRoot({ wildcard: true, delimiter: "." }),
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
     DatabaseModule,
     SharedModule,
@@ -30,6 +33,7 @@ import { HealthModule } from "./modules/health/health.module";
     ProductsModule,
     QuotesModule,
     SupportModule,
+    SubscriptionsModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

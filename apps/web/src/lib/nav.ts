@@ -67,9 +67,9 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Subscriptions",
     items: [
-      { label: "Subscriptions", href: "/subscriptions" },
-      { label: "Plans", href: "/subscriptions/plans" },
-      { label: "Renewals", href: "/subscriptions/renewals" },
+      { label: "Subscriptions", href: "/subscriptions", permission: "subscriptions.view" },
+      { label: "Plans", href: "/subscriptions/plans", permission: "subscriptions.view" },
+      { label: "Renewals", href: "/subscriptions/renewals", permission: "subscriptions.view" },
     ],
   },
   {

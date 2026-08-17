@@ -200,6 +200,53 @@ describe("CRM Timeline (e2e)", () => {
     expect(commentEntry.summary).toBe("New reply on a ticket");
   });
 
+  it("shows subscription.created/renewed/cancelled events on the account timeline (fifth proof of the TIMELINE_EVENT_TYPES extension)", async () => {
+    const org = await registerOrg(app, "Sterling Cooper Subscriptions", "scsub");
+
+    const account = await request(app.getHttpServer())
+      .post("/api/v1/accounts")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ name: "Lucky Strike Subscriptions" })
+      .expect(201);
+
+    const plan = await request(app.getHttpServer())
+      .post("/api/v1/plans")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ name: "Timeline Plan", price: 20 })
+      .expect(201);
+
+    const subscription = await request(app.getHttpServer())
+      .post("/api/v1/subscriptions")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ accountId: account.body.id, planId: plan.body.id })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/subscriptions/${subscription.body.id}/renew`)
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/subscriptions/${subscription.body.id}/cancel`)
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .expect(201);
+
+    const timeline = await request(app.getHttpServer())
+      .get(`/api/v1/accounts/${account.body.id}/timeline`)
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .expect(200);
+
+    const types = timeline.body.map((e: { type: string }) => e.type);
+    expect(types).toEqual(expect.arrayContaining(["subscription.created", "subscription.renewed", "subscription.cancelled"]));
+
+    const createdEntry = timeline.body.find((e: { type: string }) => e.type === "subscription.created");
+    expect(createdEntry.summary).toBe('Subscribed to "Timeline Plan"');
+    const renewedEntry = timeline.body.find((e: { type: string }) => e.type === "subscription.renewed");
+    expect(renewedEntry.summary).toBe("Subscription was renewed");
+    const cancelledEntry = timeline.body.find((e: { type: string }) => e.type === "subscription.cancelled");
+    expect(cancelledEntry.summary).toBe("Subscription was cancelled");
+  });
+
   it("404s when an org requests another org's account timeline", async () => {
     const orgA = await registerOrg(app, "Cutler Gleason & Chaough", "cg");
     const orgB = await registerOrg(app, "Duck Phillips CRM", "dp");

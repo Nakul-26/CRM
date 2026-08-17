@@ -113,16 +113,35 @@ export const SUPPORT_EVENT_TYPES = [
 
 export type SupportEventType = (typeof SUPPORT_EVENT_TYPES)[number];
 
+export const SUBSCRIPTIONS_EVENT_TYPES = [
+  "plan.created",
+  "plan.updated",
+  "plan.deleted",
+  "subscription.created",
+  "subscription.updated",
+  "subscription.cancelled",
+  "subscription.renewed",
+  "subscription.lapsed",
+  "subscription.deleted",
+  "subscription.renewal_reminder_sent",
+] as const;
+
+export type SubscriptionsEventType = (typeof SUBSCRIPTIONS_EVENT_TYPES)[number];
+
 /**
  * Subset of CRM_EVENT_TYPES/LEAD_EVENT_TYPES/SALES_EVENT_TYPES/QUOTES_EVENT_TYPES/
- * SUPPORT_EVENT_TYPES that belongs on a customer-facing account timeline (see
- * TimelineService). Later phases append their own "worthy" event types here
- * to slot into the timeline without touching the merge query itself.
- * `lead.converted` was the first of those, the four `opportunity.*` types
- * the second, the four `quote.*` types the third, and the three `ticket.*`
- * types below the fourth — proving the same extension point works for a
- * fourth, unrelated module (including one whose events can originate from
- * an unauthenticated request — see PublicQuotesController).
+ * SUPPORT_EVENT_TYPES/SUBSCRIPTIONS_EVENT_TYPES that belongs on a customer-facing
+ * account timeline (see TimelineService). Later phases append their own
+ * "worthy" event types here to slot into the timeline without touching the
+ * merge query itself. `lead.converted` was the first of those, the four
+ * `opportunity.*` types the second, the four `quote.*` types the third, the
+ * three `ticket.*` types the fourth, and the four `subscription.*` types
+ * below the fifth — proving the same extension point works for a fifth,
+ * unrelated module (including one whose events can originate from a
+ * scheduled job with no request context — see RenewalsService).
+ * `subscription.renewal_reminder_sent` is deliberately left off: it's an
+ * operational detail (a notification fired), not a customer-facing
+ * milestone, the same selectivity `ticket.assigned` was left off for.
  */
 export const TIMELINE_EVENT_TYPES = [
   "account.created",
@@ -143,6 +162,10 @@ export const TIMELINE_EVENT_TYPES = [
   "ticket.created",
   "ticket.status_changed",
   "ticket.comment_added",
+  "subscription.created",
+  "subscription.cancelled",
+  "subscription.renewed",
+  "subscription.lapsed",
 ] as const;
 
 export type TimelineEventType = (typeof TIMELINE_EVENT_TYPES)[number];

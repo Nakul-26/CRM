@@ -24,14 +24,22 @@ versioned quotes (locked once sent, revised via explicit new versions),
 reusable templates, on-demand PDF generation, and a public, unauthenticated
 share-link flow for a customer to view/accept/reject a quote.
 
-**Phase 6 (current):** Support — tickets with SLA policies (response/
+**Phase 6:** Support — tickets with SLA policies (response/
 resolution targets snapshotted per ticket, breach flags computed at read
 time), an internal knowledge base, and the platform's first outbound email
 dispatch (via Mailpit in dev) — a sent quote now emails its contact the
 public link, and tickets email their contact on creation and on public
-replies. See [docs/architecture/overview.md](docs/architecture/overview.md)
-for the full picture and
-[docs/architecture/overview.md#phase-6-scope](docs/architecture/overview.md#phase-6-scope)
+replies.
+
+**Phase 7 (current):** Subscriptions — Plans, Subscriptions (snapshotting
+their plan's price/interval at creation, same as Quotes/Support), and
+Renewals: a `renewal_reminders` Postgres job table polled every 15 minutes
+by the platform's first scheduled background process, emailing a
+subscription's contact ahead of its renewal date. No payment processing —
+renewal is a manual "extend the period" action. See
+[docs/architecture/overview.md](docs/architecture/overview.md) for the full
+picture and
+[docs/architecture/overview.md#phase-7-scope](docs/architecture/overview.md#phase-7-scope)
 for exactly what's built vs. deferred.
 
 ## Prerequisites
@@ -59,7 +67,7 @@ pnpm dev                      # builds shared packages, then starts api + web
 - Web app: http://localhost:3000
 - API: http://localhost:4000/api/v1
 - API docs (Swagger): http://localhost:4000/api/docs
-- Mailpit (dev email capture — quote-sent and ticket notifications land here): http://localhost:8025
+- Mailpit (dev email capture — quote-sent, ticket, and renewal-reminder notifications land here): http://localhost:8025
 
 Register the first organization at http://localhost:3000/register — that
 account becomes the org's Owner with every permission.
@@ -79,7 +87,7 @@ same Postgres container automatically; it won't touch your dev data.
 ```text
 apps/
   web/     Next.js app — the only thing the browser talks to
-  api/     NestJS modular monolith (identity, crm, leads, sales, products, quotes, support modules)
+  api/     NestJS modular monolith (identity, crm, leads, sales, products, quotes, support, subscriptions modules)
 packages/
   contracts/   Zod schemas + shared TS types (auth, permissions, events, errors)
   config/      Zod-validated environment loading

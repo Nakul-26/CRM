@@ -50,6 +50,14 @@ function summarizeEvent(eventType: string, payload: Record<string, unknown> | nu
       return `Ticket status changed to "${payload?.to ?? ""}"`;
     case "ticket.comment_added":
       return "New reply on a ticket";
+    case "subscription.created":
+      return `Subscribed to "${payload?.planName ?? ""}"`;
+    case "subscription.cancelled":
+      return "Subscription was cancelled";
+    case "subscription.renewed":
+      return "Subscription was renewed";
+    case "subscription.lapsed":
+      return "Subscription lapsed";
     default:
       return eventType;
   }
@@ -62,10 +70,10 @@ export class TimelineService {
   /**
    * Read-time merge of two independent sources — crm.activities and
    * identity.audit_log (filtered to TIMELINE_EVENT_TYPES) — rather than a
-   * dedicated timeline table. Later phases (opportunities/quotes/
-   * subscriptions/tickets) only need to publish events with `accountId` in
-   * their payload and get added to TIMELINE_EVENT_TYPES to appear here; no
-   * change to this query is required.
+   * dedicated timeline table. Each later phase (opportunities, quotes,
+   * tickets, subscriptions) only needed to publish events with `accountId`
+   * in their payload and get added to TIMELINE_EVENT_TYPES to appear here;
+   * no change to this query itself was required for any of them.
    */
   async forAccount(organizationId: string, accountId: string, filters: TimelineFilters): Promise<TimelineEntryDto[]> {
     await this.requireAccountInOrganization(organizationId, accountId);

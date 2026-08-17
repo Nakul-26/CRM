@@ -25,12 +25,23 @@ interface TicketCommentAddedPayload {
   contactName?: string | null;
 }
 
+interface SubscriptionRenewalReminderSentPayload {
+  subscriptionId: string;
+  planName: string;
+  currentPeriodEnd: string;
+  contactEmail?: string | null;
+  contactName?: string | null;
+}
+
 /**
  * Cross-cutting, event-driven email dispatch — same shape as AuditListener
  * (@OnEvent-driven, registered in SharedModule). Publishing services enrich
  * their own event payloads with everything an email needs (recipient
  * address/name, ready-built links); this listener has no DB/service
  * dependencies beyond MailerService — see docs/decisions/0006-support-phase6-scope.md.
+ * The subscription-renewal-reminder handler below is published by
+ * RenewalsService, a scheduled job with no request context, rather than a
+ * user action — see docs/decisions/0007-subscriptions-phase7-scope.md.
  */
 @Injectable()
 export class MailListener {
@@ -79,6 +90,23 @@ export class MailListener {
         subject: "Update on your support ticket",
         html: `<p>${greeting}</p><p>${body}</p>`,
         text: `${greeting}\n\n${body}`,
+      });
+    });
+  }
+
+  @OnEvent("subscription.renewal_reminder_sent")
+  async onSubscriptionRenewalReminderSent(
+    event: DomainEvent<"subscription.renewal_reminder_sent", SubscriptionRenewalReminderSentPayload>,
+  ): Promise<void> {
+    await this.dispatch(event.eventType, async () => {
+      const { planName, currentPeriodEnd, contactEmail, contactName } = event.payload;
+      const greeting = contactName ? `Hi ${contactName},` : "Hi,";
+      const renewalDate = new Date(currentPeriodEnd).toLocaleDateString();
+      await this.mailer.send({
+        to: contactEmail,
+        subject: `Your ${planName} subscription renews soon`,
+        html: `<p>${greeting}</p><p>Your ${planName} subscription renews on ${renewalDate}. No action is needed if you'd like it to continue.</p>`,
+        text: `${greeting}\n\nYour ${planName} subscription renews on ${renewalDate}. No action is needed if you'd like it to continue.`,
       });
     });
   }
