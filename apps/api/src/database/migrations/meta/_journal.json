@@ -36,6 +36,20 @@
       "when": 1786856352703,
       "tag": "0004_late_demogoblin",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786875128219,
+      "tag": "0005_worthless_weapon_omega",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786875478286,
+      "tag": "0006_silly_mindworm",
+      "breakpoints": true
     }
   ]
 }

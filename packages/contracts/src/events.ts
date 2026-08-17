@@ -95,15 +95,34 @@ export const QUOTES_EVENT_TYPES = [
 
 export type QuotesEventType = (typeof QUOTES_EVENT_TYPES)[number];
 
+export const SUPPORT_EVENT_TYPES = [
+  "ticket.created",
+  "ticket.updated",
+  "ticket.status_changed",
+  "ticket.assigned",
+  "ticket.comment_added",
+  "ticket.deleted",
+  "sla_policy.created",
+  "sla_policy.updated",
+  "sla_policy.deleted",
+  "kb_article.created",
+  "kb_article.updated",
+  "kb_article.published",
+  "kb_article.deleted",
+] as const;
+
+export type SupportEventType = (typeof SUPPORT_EVENT_TYPES)[number];
+
 /**
- * Subset of CRM_EVENT_TYPES/LEAD_EVENT_TYPES/SALES_EVENT_TYPES/QUOTES_EVENT_TYPES
- * that belongs on a customer-facing account timeline (see TimelineService).
- * Later phases append their own "worthy" event types here to slot into the
- * timeline without touching the merge query itself. `lead.converted` was the
- * first of those, the four `opportunity.*` types the second, and the four
- * `quote.*` types below the third — proving the same extension point works
- * for a third, unrelated module (including one whose events can originate
- * from an unauthenticated request — see PublicQuotesController).
+ * Subset of CRM_EVENT_TYPES/LEAD_EVENT_TYPES/SALES_EVENT_TYPES/QUOTES_EVENT_TYPES/
+ * SUPPORT_EVENT_TYPES that belongs on a customer-facing account timeline (see
+ * TimelineService). Later phases append their own "worthy" event types here
+ * to slot into the timeline without touching the merge query itself.
+ * `lead.converted` was the first of those, the four `opportunity.*` types
+ * the second, the four `quote.*` types the third, and the three `ticket.*`
+ * types below the fourth — proving the same extension point works for a
+ * fourth, unrelated module (including one whose events can originate from
+ * an unauthenticated request — see PublicQuotesController).
  */
 export const TIMELINE_EVENT_TYPES = [
   "account.created",
@@ -121,6 +140,9 @@ export const TIMELINE_EVENT_TYPES = [
   "quote.sent",
   "quote.accepted",
   "quote.rejected",
+  "ticket.created",
+  "ticket.status_changed",
+  "ticket.comment_added",
 ] as const;
 
 export type TimelineEventType = (typeof TIMELINE_EVENT_TYPES)[number];

@@ -157,6 +157,49 @@ describe("CRM Timeline (e2e)", () => {
     expect(acceptedEntry.summary).toBe("Quote was accepted");
   });
 
+  it("shows ticket.created/status_changed/comment_added events on the account timeline (fourth proof of the TIMELINE_EVENT_TYPES extension)", async () => {
+    const org = await registerOrg(app, "Sterling Cooper Support", "scs");
+
+    const account = await request(app.getHttpServer())
+      .post("/api/v1/accounts")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ name: "Lucky Strike Support" })
+      .expect(201);
+
+    const ticket = await request(app.getHttpServer())
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ subject: "Billing question", accountId: account.body.id })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/tickets/${ticket.body.id}/status`)
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ status: "in_progress" })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/tickets/${ticket.body.id}/comments`)
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ body: "Looking into your invoice", isPublic: true })
+      .expect(201);
+
+    const timeline = await request(app.getHttpServer())
+      .get(`/api/v1/accounts/${account.body.id}/timeline`)
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .expect(200);
+
+    const types = timeline.body.map((e: { type: string }) => e.type);
+    expect(types).toEqual(expect.arrayContaining(["ticket.created", "ticket.status_changed", "ticket.comment_added"]));
+
+    const createdEntry = timeline.body.find((e: { type: string }) => e.type === "ticket.created");
+    expect(createdEntry.summary).toBe('Ticket "Billing question" was created');
+    const statusEntry = timeline.body.find((e: { type: string }) => e.type === "ticket.status_changed");
+    expect(statusEntry.summary).toBe('Ticket status changed to "in_progress"');
+    const commentEntry = timeline.body.find((e: { type: string }) => e.type === "ticket.comment_added");
+    expect(commentEntry.summary).toBe("New reply on a ticket");
+  });
+
   it("404s when an org requests another org's account timeline", async () => {
     const orgA = await registerOrg(app, "Cutler Gleason & Chaough", "cg");
     const orgB = await registerOrg(app, "Duck Phillips CRM", "dp");

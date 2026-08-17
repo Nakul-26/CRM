@@ -44,6 +44,12 @@ function summarizeEvent(eventType: string, payload: Record<string, unknown> | nu
       return "Quote was accepted";
     case "quote.rejected":
       return "Quote was rejected";
+    case "ticket.created":
+      return `Ticket "${payload?.subject ?? ""}" was created`;
+    case "ticket.status_changed":
+      return `Ticket status changed to "${payload?.to ?? ""}"`;
+    case "ticket.comment_added":
+      return "New reply on a ticket";
     default:
       return eventType;
   }

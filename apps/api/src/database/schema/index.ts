@@ -4,3 +4,4 @@ export * from "./leads.schema";
 export * from "./sales.schema";
 export * from "./products.schema";
 export * from "./quotes.schema";
+export * from "./support.schema";

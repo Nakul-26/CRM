@@ -17,6 +17,9 @@ export const apiEnvSchema = z.object({
 
   SMTP_HOST: z.string().default("localhost"),
   SMTP_PORT: z.coerce.number().int().positive().default(1025),
+  SMTP_FROM: z.string().default("no-reply@sales-platform.local"),
+
+  WEB_APP_URL: z.string().url().default("http://localhost:3000"),
 });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

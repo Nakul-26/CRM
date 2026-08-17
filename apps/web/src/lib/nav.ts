@@ -59,9 +59,9 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Support",
     items: [
-      { label: "Tickets", href: "/support/tickets" },
-      { label: "Knowledge Base", href: "/support/kb" },
-      { label: "SLAs", href: "/support/slas" },
+      { label: "Tickets", href: "/support/tickets", permission: "support.tickets.view" },
+      { label: "Knowledge Base", href: "/support/kb", permission: "support.kb.view" },
+      { label: "SLAs", href: "/support/slas", permission: "support.sla_policies.view" },
     ],
   },
   {

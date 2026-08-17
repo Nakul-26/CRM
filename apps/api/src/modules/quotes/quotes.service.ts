@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { and, asc, eq, isNull } from "drizzle-orm";
+import type { ApiEnv } from "@sales-platform/config";
 import type {
   CreateQuoteInput,
   CreateTemplateInput,
@@ -117,6 +119,7 @@ export class QuotesService {
     @Inject(DATABASE_CONNECTION) private readonly db: Database,
     private readonly events: DomainEventBus,
     private readonly products: ProductsService,
+    private readonly config: ConfigService<ApiEnv, true>,
   ) {}
 
   async list(organizationId: string, filters?: { status?: QuoteStatus; accountId?: string; opportunityId?: string }) {
@@ -304,11 +307,21 @@ export class QuotesService {
       .set({ status: "sent", shareToken, sentAt: new Date(), updatedAt: new Date(), updatedBy: actorId })
       .where(eq(quotes.id, quote.id));
 
+    const contact = quote.contactId ? await this.findContactForEmail(organizationId, quote.contactId) : null;
+    const webAppUrl = this.config.get("WEB_APP_URL", { infer: true });
+
     this.events.publish({
       eventType: "quote.sent",
       organizationId,
       actorId,
-      payload: { quoteId: quote.id, accountId: quote.accountId, shareToken },
+      payload: {
+        quoteId: quote.id,
+        accountId: quote.accountId,
+        shareToken,
+        contactEmail: contact?.email ?? null,
+        contactName: contact ? `${contact.firstName} ${contact.lastName}`.trim() : null,
+        publicUrl: `${webAppUrl}/public/quotes/${shareToken}`,
+      },
     });
     return this.findById(organizationId, quote.id);
   }
@@ -654,6 +667,16 @@ export class QuotesService {
       .where(and(eq(contacts.organizationId, organizationId), eq(contacts.id, contactId), isNull(contacts.deletedAt)))
       .limit(1);
     if (!contact) throw new NotFoundException(`Contact ${contactId} not found`);
+  }
+
+  /** Snapshot lookup for email dispatch — the contact's address/name at the moment the triggering action happened. */
+  private async findContactForEmail(organizationId: string, contactId: string) {
+    const [contact] = await this.db
+      .select({ email: contacts.email, firstName: contacts.firstName, lastName: contacts.lastName })
+      .from(contacts)
+      .where(and(eq(contacts.organizationId, organizationId), eq(contacts.id, contactId), isNull(contacts.deletedAt)))
+      .limit(1);
+    return contact ?? null;
   }
 
   private async requireOpportunityInOrganization(organizationId: string, opportunityId: string) {

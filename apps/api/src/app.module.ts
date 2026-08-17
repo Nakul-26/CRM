@@ -13,6 +13,7 @@ import { SalesModule } from "./modules/sales/sales.module";
 import { LeadsModule } from "./modules/leads/leads.module";
 import { ProductsModule } from "./modules/products/products.module";
 import { QuotesModule } from "./modules/quotes/quotes.module";
+import { SupportModule } from "./modules/support/support.module";
 import { HealthModule } from "./modules/health/health.module";
 
 @Module({
@@ -28,6 +29,7 @@ import { HealthModule } from "./modules/health/health.module";
     LeadsModule,
     ProductsModule,
     QuotesModule,
+    SupportModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

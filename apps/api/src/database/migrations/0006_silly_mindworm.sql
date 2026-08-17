@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS "support"."sla_policies_org_priority_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "sla_policies_org_priority_unique" ON "support"."sla_policies" USING btree ("organization_id","priority") WHERE "sla_policies"."deleted_at" is null;

@@ -16,6 +16,9 @@ for the Phase 4 (Sales Pipeline) implementation plan, and
 left out. See [docs/plans/0005-phase5-quotations-plan.md](../plans/0005-phase5-quotations-plan.md)
 for the Phase 5 (Quotations) implementation plan, and
 [ADR 0005](../decisions/0005-quotations-phase5-scope.md) for what it
+deliberately left out. See [docs/plans/0006-phase6-support-plan.md](../plans/0006-phase6-support-plan.md)
+for the Phase 6 (Support) implementation plan, and
+[ADR 0006](../decisions/0006-support-phase6-scope.md) for what it
 deliberately left out.
 
 ## System shape
@@ -35,9 +38,10 @@ apps/api/src/modules/
   sales/          opportunities, pipelines, stages, forecast/analytics
   products/       product catalog, volume-based price tiers
   quotes/         quotes, versions, templates, PDF, public acceptance
-  shared/         tenant context, event bus, audit listener, guards
-  (support, subscriptions, notifications
-   — added in later phases, same pattern)
+  support/        tickets, SLA policies, knowledge base
+  shared/         tenant context, event bus, audit listener, guards,
+                  mailer/mail listener (email dispatch)
+  (subscriptions  — added in a later phase, same pattern)
 ```
 
 Every module follows: `Controller -> Application Service -> Domain Logic ->
@@ -48,7 +52,8 @@ exported service; cross-module side effects go through domain events.
 ## Data ownership
 
 One Postgres database (`sales_platform`), one Postgres **schema per domain
-module** (`identity`, `crm`, `leads`, `sales`, `products`, `quotes`, ...).
+module** (`identity`, `crm`, `leads`, `sales`, `products`, `quotes`,
+`support`, ...).
 This gives each module a
 real, enforced data boundary (a `crm` module literally cannot query
 `identity.users` without going through the identity module's service) while
@@ -102,6 +107,9 @@ Phase 4 events: `opportunity.created/updated/stage_changed/won/lost/deleted`,
 Phase 5 events: `product.created/updated/deleted`,
 `quote.created/updated/sent/accepted/rejected/expired/revised/deleted`,
 `quote_template.created/updated/deleted`.
+Phase 6 events: `ticket.created/updated/status_changed/assigned/
+comment_added/deleted`, `sla_policy.created/updated/deleted`,
+`kb_article.created/updated/published/deleted`.
 
 ## Audit
 
@@ -207,7 +215,8 @@ into a new one and preserves the old one immutably — the first genuinely
 versioned/immutable document in the system, a deliberate departure from
 every prior module's plain-mutable-PATCH pattern. `POST /quotes/:id/send`
 generates a share link rather than sending an email (no SMTP dispatch code
-exists yet — that's Phase 6); `PublicQuotesController` is the first
+existed yet at the time — Phase 6 closes this gap, see below);
+`PublicQuotesController` is the first
 unauthenticated, customer-facing surface in the app, looked up by an
 opaque `shareToken` rather than by id+JWT, with events published via an
 explicit `organizationId` since there's no request context to source one
@@ -221,3 +230,35 @@ does not auto-advance its linked Opportunity's stage — recorded as a
 Phase-8-automation deferral, not a silent gap. All of the above, plus
 lazy (touch-on-access) quote expiry and globally-sequential quote numbers,
 are recorded in [ADR 0005](../decisions/0005-quotations-phase5-scope.md).
+
+## Phase 6 scope
+
+Support: Tickets, SLA policies, and an internal Knowledge Base, plus the
+first outbound email dispatch in the codebase. A ticket's SLA due-dates
+(`firstResponseDueAt`/`resolutionDueAt`) are snapshotted from the matching
+`sla_policies` row (one per organization+priority) at creation time — same
+"snapshot, not live reference" reasoning as quote line items — and SLA
+breach is a pure, read-time computed flag (`ticket-sla.ts`'s
+`computeTicketSlaFlags()`, unit-tested like `evaluate-lead-score.ts`), never
+persisted, since nothing needs to *transition* on a breach the way a quote
+transitions to `expired`. Ticket status is a fixed transition graph
+(`open/in_progress/resolved/closed`, always reopenable), reusing Leads'
+pattern rather than Opportunities' — the same class of call ADR 0005 made
+for quote status. The Knowledge Base is internal-only in this phase — no
+public, unauthenticated help-center view — recorded as a deliberate scope
+cut, not a gap, in [ADR 0006](../decisions/0006-support-phase6-scope.md).
+`MailerService`/`MailListener` (`apps/api/src/shared/mail/`) are new
+cross-cutting infrastructure in `SharedModule`, structurally identical to
+`AuditListener`: an `@OnEvent`-driven listener that never breaks the
+business operation that triggered it. Publishing services (`TicketsService`,
+`QuotesService`) enrich their own event payloads with everything an email
+needs — recipient address/name, ready-built links — so the mail listener
+itself has no database or cross-module service dependencies. This closes
+the deferral Phase 5 left open: `QuotesService.send()` now emails the
+quote's contact its public link, fulfilling ADR 0005's decision #7. Three
+`ticket.*` event types were added to `TIMELINE_EVENT_TYPES`, the fourth real
+use of that extension point after `lead.converted`, Phase 4's
+`opportunity.*` events, and Phase 5's `quote.*` events. Inbound
+email-to-ticket parsing (a customer replying by email to add a ticket
+comment) is out of scope — recorded in ADR 0006 as a materially bigger,
+deliberately deferred feature.
