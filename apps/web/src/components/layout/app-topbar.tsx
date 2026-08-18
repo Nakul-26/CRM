@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import type { AuthenticatedUser } from "@sales-platform/contracts";
 import { Button } from "@/components/ui/button";
 import { useLogout } from "@/hooks/use-auth";
+import { NotificationBell } from "./notification-bell";
 
 export function AppTopbar({ user }: { user: AuthenticatedUser }) {
   const router = useRouter();
@@ -13,6 +14,7 @@ export function AppTopbar({ user }: { user: AuthenticatedUser }) {
     <header className="flex h-14 items-center justify-between border-b border-border px-4">
       <div className="text-sm text-muted-foreground">{/* Global search lands here in a later phase */}</div>
       <div className="flex items-center gap-3">
+        <NotificationBell />
         <span className="text-sm text-muted-foreground">{user.fullName}</span>
         <Button
           variant="outline"

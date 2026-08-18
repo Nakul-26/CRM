@@ -17,6 +17,7 @@ import { QuotesModule } from "./modules/quotes/quotes.module";
 import { SupportModule } from "./modules/support/support.module";
 import { SubscriptionsModule } from "./modules/subscriptions/subscriptions.module";
 import { AnalyticsModule } from "./modules/analytics/analytics.module";
+import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { HealthModule } from "./modules/health/health.module";
 
 @Module({
@@ -36,6 +37,7 @@ import { HealthModule } from "./modules/health/health.module";
     SupportModule,
     SubscriptionsModule,
     AnalyticsModule,
+    NotificationsModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

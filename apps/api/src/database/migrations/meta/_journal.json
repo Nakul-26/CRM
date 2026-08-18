@@ -64,6 +64,13 @@
       "when": 1786979625081,
       "tag": "0008_yellow_gunslinger",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787029956267,
+      "tag": "0009_robust_vengeance",
+      "breakpoints": true
     }
   ]
 }

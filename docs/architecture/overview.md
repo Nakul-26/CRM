@@ -25,7 +25,10 @@ for the Phase 7 (Subscriptions) implementation plan, and
 deliberately left out. See [docs/plans/0008-phase8-analytics-automation-plan.md](../plans/0008-phase8-analytics-automation-plan.md)
 for the Phase 8 (Analytics & Automation) implementation plan, and
 [ADR 0008](../decisions/0008-analytics-automation-phase8-scope.md) for what
-it deliberately left out.
+it deliberately left out. See [docs/plans/0009-phase9-notifications-plan.md](../plans/0009-phase9-notifications-plan.md)
+for the Phase 9 (Notifications) implementation plan, and
+[ADR 0009](../decisions/0009-notifications-phase9-scope.md) for what it
+deliberately left out.
 
 ## System shape
 
@@ -49,6 +52,8 @@ apps/api/src/modules/
   subscriptions/  plans, subscriptions, renewal reminders (scheduled job)
   analytics/      cross-entity dashboard metrics (reads other modules'
                   schemas directly, owns no schema of its own)
+  notifications/  in-app notification center (bell icon, unread state),
+                  event-driven off ticket/opportunity/quote outcomes
   shared/         tenant context, event bus, audit listener, guards,
                   mailer/mail listener (email dispatch)
 ```
@@ -62,7 +67,7 @@ exported service; cross-module side effects go through domain events.
 
 One Postgres database (`sales_platform`), one Postgres **schema per domain
 module** (`identity`, `crm`, `leads`, `sales`, `products`, `quotes`,
-`support`, `subscriptions`).
+`support`, `subscriptions`, `notifications`).
 This gives each module a
 real, enforced data boundary (a `crm` module literally cannot query
 `identity.users` without going through the identity module's service) while
@@ -127,6 +132,10 @@ auto-advancing a linked Opportunity's stage) is a second producer of the
 existing `opportunity.stage_changed`/`opportunity.won` events, and
 `quote.accepted`'s payload gained one field (`opportunityId`) so the
 listener has something to act on. See [ADR 0008](../decisions/0008-analytics-automation-phase8-scope.md).
+Phase 9 likewise introduced no new event types — `opportunity.won`/
+`opportunity.lost`/`quote.accepted`/`quote.rejected` payloads each gained an
+`ownerId` field so `NotificationsListener` has a recipient to act on. See
+[ADR 0009](../decisions/0009-notifications-phase9-scope.md).
 
 ## Audit
 
@@ -147,7 +156,7 @@ of this same table rather than maintaining its own history.
 | Temporal               | A workflow needs durable multi-day orchestration with retries beyond what a scheduled job table covers. Phase 7's renewal reminders confirmed a Postgres job table + `@nestjs/schedule` is still enough — see [ADR 0007](../decisions/0007-subscriptions-phase7-scope.md). |
 | OpenSearch             | Postgres full-text search stops being fast enough at real data volume. |
 | Separate databases per module | A module needs independent scaling/ownership by a separate team. |
-| `notifications` module (in-app center: bell icon, unread state, delivery preferences) | A specific phase's brief item names it explicitly — currently none has. Named only in ADR 0001's aspirational module list with zero implementation; Phase 8 ("Analytics & Automation") deliberately did not claim it — see [ADR 0008](../decisions/0008-analytics-automation-phase8-scope.md) decision #10. |
+| Notification delivery preferences/settings, email digests of notifications | A concrete need for per-user delivery control shows up — Phase 9 built the in-app bell/unread-state center itself, see [ADR 0009](../decisions/0009-notifications-phase9-scope.md). |
 
 ## Phase 1 scope
 
@@ -355,3 +364,26 @@ Out of scope, explicitly: payment/billing automation beyond what Phase 7
 already covers, any additional cross-module automations beyond the one the
 brief named, and the `notifications` module (see the deferred-tech table
 above).
+
+## Phase 9 scope
+
+Notifications — unlike every prior phase, no ADR/plan/`ComingSoon` stub
+named "Phase 9" anywhere in the repo; the scope was chosen directly by the
+user from the two items that had some evidence (see
+[ADR 0009](../decisions/0009-notifications-phase9-scope.md) for the full
+reasoning). A new `notifications` module (new schema, one table) creates an
+in-app notification for a bounded, evidenced set of 5 existing events —
+`ticket.assigned`, `opportunity.won`, `opportunity.lost`, `quote.accepted`,
+`quote.rejected` — each already carrying a single clear recipient
+(`assigneeId`/a newly added `ownerId` payload field), skipping self-triggered
+actions. `NotificationsListener` lives inside its own module rather than
+`SharedModule`, reacting across `SalesModule`/`QuotesModule` with no import
+relationship — the same cross-module-listener precedent Phase 8's
+`QuoteAcceptedListener` established. The API is authenticated-only with no
+new permission (every query is scoped to the caller's own `userId`, the
+same precedent `GET /auth/me` already set) — the first user-scoped rather
+than org-scoped resource in the app. The frontend gets a bell icon in
+`AppTopbar` with a polled (not pushed) unread-count badge and a dropdown of
+recent notifications. Delivery preferences/settings and an email digest of
+notifications are explicitly out of scope — recorded as a deferral, not a
+gap.

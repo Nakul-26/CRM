@@ -11,3 +11,4 @@ export * from "./quotes";
 export * from "./support";
 export * from "./subscriptions";
 export * from "./analytics";
+export * from "./notifications";

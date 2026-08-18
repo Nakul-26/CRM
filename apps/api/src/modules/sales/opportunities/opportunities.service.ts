@@ -184,14 +184,26 @@ export class OpportunitiesService {
         eventType: "opportunity.won",
         organizationId,
         actorId,
-        payload: { opportunityId, accountId: existing.accountId, value: opportunity.value, currency: opportunity.currency },
+        payload: {
+          opportunityId,
+          accountId: existing.accountId,
+          value: opportunity.value,
+          currency: opportunity.currency,
+          ownerId: opportunity.ownerId,
+        },
       });
     } else if (outcome === "lost") {
       this.events.publish({
         eventType: "opportunity.lost",
         organizationId,
         actorId,
-        payload: { opportunityId, accountId: existing.accountId, value: opportunity.value, currency: opportunity.currency },
+        payload: {
+          opportunityId,
+          accountId: existing.accountId,
+          value: opportunity.value,
+          currency: opportunity.currency,
+          ownerId: opportunity.ownerId,
+        },
       });
     }
 
@@ -244,7 +256,13 @@ export class OpportunitiesService {
     this.events.publish({
       eventType: "opportunity.won",
       organizationId,
-      payload: { opportunityId, accountId: existing.accountId, value: opportunity.value, currency: opportunity.currency },
+      payload: {
+        opportunityId,
+        accountId: existing.accountId,
+        value: opportunity.value,
+        currency: opportunity.currency,
+        ownerId: opportunity.ownerId,
+      },
     });
   }
 

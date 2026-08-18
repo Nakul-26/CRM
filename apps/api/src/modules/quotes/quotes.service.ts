@@ -428,7 +428,7 @@ export class QuotesService {
     this.events.publish({
       eventType: "quote.accepted",
       organizationId: quote.organizationId,
-      payload: { quoteId: quote.id, accountId: quote.accountId, opportunityId: quote.opportunityId },
+      payload: { quoteId: quote.id, accountId: quote.accountId, opportunityId: quote.opportunityId, ownerId: quote.ownerId },
     });
     return this.findByToken(token);
   }
@@ -443,7 +443,7 @@ export class QuotesService {
     this.events.publish({
       eventType: "quote.rejected",
       organizationId: quote.organizationId,
-      payload: { quoteId: quote.id, accountId: quote.accountId },
+      payload: { quoteId: quote.id, accountId: quote.accountId, ownerId: quote.ownerId },
     });
     return this.findByToken(token);
   }
