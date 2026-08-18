@@ -31,15 +31,22 @@ dispatch (via Mailpit in dev) — a sent quote now emails its contact the
 public link, and tickets email their contact on creation and on public
 replies.
 
-**Phase 7 (current):** Subscriptions — Plans, Subscriptions (snapshotting
+**Phase 7:** Subscriptions — Plans, Subscriptions (snapshotting
 their plan's price/interval at creation, same as Quotes/Support), and
 Renewals: a `renewal_reminders` Postgres job table polled every 15 minutes
 by the platform's first scheduled background process, emailing a
 subscription's contact ahead of its renewal date. No payment processing —
-renewal is a manual "extend the period" action. See
+renewal is a manual "extend the period" action.
+
+**Phase 8 (current):** Analytics & Automation — a dashboard home page with
+real cross-entity metrics (pipeline value, win rate, MRR/ARR); one
+concrete automation (accepting a quote linked to an Opportunity
+auto-advances that Opportunity to its pipeline's win stage); and advanced
+search — typo-tolerant fuzzy matching plus Leads onboarded as a searchable
+type. See
 [docs/architecture/overview.md](docs/architecture/overview.md) for the full
 picture and
-[docs/architecture/overview.md#phase-7-scope](docs/architecture/overview.md#phase-7-scope)
+[docs/architecture/overview.md#phase-8-scope](docs/architecture/overview.md#phase-8-scope)
 for exactly what's built vs. deferred.
 
 ## Prerequisites
@@ -87,7 +94,7 @@ same Postgres container automatically; it won't touch your dev data.
 ```text
 apps/
   web/     Next.js app — the only thing the browser talks to
-  api/     NestJS modular monolith (identity, crm, leads, sales, products, quotes, support, subscriptions modules)
+  api/     NestJS modular monolith (identity, crm, leads, sales, products, quotes, support, subscriptions, analytics modules)
 packages/
   contracts/   Zod schemas + shared TS types (auth, permissions, events, errors)
   config/      Zod-validated environment loading

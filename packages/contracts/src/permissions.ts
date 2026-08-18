@@ -68,6 +68,7 @@ export const PERMISSIONS = [
   "subscriptions.edit",
   "subscriptions.delete",
   "subscriptions.manage",
+  "analytics.view",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -114,5 +115,6 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]> 
     "subscriptions.view",
     "subscriptions.create",
     "subscriptions.edit",
+    "analytics.view",
   ],
 };

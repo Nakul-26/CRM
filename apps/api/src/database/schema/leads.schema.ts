@@ -53,6 +53,12 @@ export const leads = leadsSchema.table(
     currency: text("currency"),
     notes: text("notes"),
     tags: jsonb("tags").$type<string[]>().notNull().default([]),
+    // Generated tsvector column, maintained by Postgres itself — added via
+    // raw SQL in the migration (drizzle-kit has no first-class tsvector
+    // helper). Declared here as a plain text placeholder so Drizzle knows
+    // the column exists for typed selects; never written to from app code.
+    // Same technique as crm.accounts/crm.contacts (see crm.schema.ts).
+    searchVector: text("search_vector"),
     convertedAccountId: uuid("converted_account_id").references(() => accounts.id, { onDelete: "set null" }),
     convertedContactId: uuid("converted_contact_id").references(() => contacts.id, { onDelete: "set null" }),
     convertedAt: timestamp("converted_at", { withTimezone: true }),

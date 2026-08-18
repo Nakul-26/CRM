@@ -198,6 +198,56 @@ export class OpportunitiesService {
     return serializeOpportunity(opportunity);
   }
 
+  /**
+   * Automation entry point for Phase 8: reacts to `quote.accepted` (see
+   * QuoteAcceptedListener in sales/automation/). No-ops rather than throws
+   * for every case where advancing doesn't make sense — the opportunity may
+   * already be closed, or its pipeline may simply have no `isWon` stage —
+   * since this runs off an event, not a user action with something to
+   * report back to. `updatedBy`/`actorId` are left unset (system-originated
+   * write), same precedent SubscriptionsService.lapseIfDue() already set.
+   */
+  async autoAdvanceOnQuoteAccepted(organizationId: string, opportunityId: string) {
+    const [existing] = await this.db
+      .select()
+      .from(opportunities)
+      .where(
+        and(
+          eq(opportunities.organizationId, organizationId),
+          eq(opportunities.id, opportunityId),
+          isNull(opportunities.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!existing || existing.outcome !== "open") return;
+
+    const winStage = await this.pipelines.findWinStage(organizationId, existing.pipelineId);
+    if (!winStage) return;
+
+    const [opportunity] = await this.db
+      .update(opportunities)
+      .set({
+        stageId: winStage.id,
+        probability: winStage.probability,
+        outcome: "won",
+        closedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(opportunities.organizationId, organizationId), eq(opportunities.id, opportunityId)))
+      .returning();
+
+    this.events.publish({
+      eventType: "opportunity.stage_changed",
+      organizationId,
+      payload: { opportunityId, accountId: existing.accountId, fromStageId: existing.stageId, toStageId: winStage.id },
+    });
+    this.events.publish({
+      eventType: "opportunity.won",
+      organizationId,
+      payload: { opportunityId, accountId: existing.accountId, value: opportunity.value, currency: opportunity.currency },
+    });
+  }
+
   async stageHistory(organizationId: string, opportunityId: string): Promise<OpportunityStageHistoryEntryDto[]> {
     await this.findById(organizationId, opportunityId);
 

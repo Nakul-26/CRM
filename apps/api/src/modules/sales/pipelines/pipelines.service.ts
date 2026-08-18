@@ -72,6 +72,24 @@ export class PipelinesService {
   }
 
   /**
+   * First `isWon` stage (lowest order) of a pipeline, or `undefined` if the
+   * pipeline has none — used by Sales' quote-acceptance automation
+   * (docs/decisions/0008-analytics-automation-phase8-scope.md). Unlike
+   * `firstStage`, a missing win stage is a normal, silently-handled case
+   * for the caller, not an error — org-defined pipelines aren't required
+   * to have one.
+   */
+  async findWinStage(organizationId: string, pipelineId: string) {
+    const [stage] = await this.db
+      .select()
+      .from(stages)
+      .where(and(eq(stages.organizationId, organizationId), eq(stages.pipelineId, pipelineId), eq(stages.isWon, true)))
+      .orderBy(stages.order)
+      .limit(1);
+    return stage;
+  }
+
+  /**
    * Idempotently ensures the org has a default pipeline, seeding "Sales
    * Pipeline" with the brief's 6 example stages the first time it's needed
    * (lazy creation on first read/use, not on org-creation — avoids a race

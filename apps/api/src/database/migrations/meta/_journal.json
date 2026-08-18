@@ -57,6 +57,13 @@
       "when": 1786949909557,
       "tag": "0007_boring_nekra",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786979625081,
+      "tag": "0008_yellow_gunslinger",
+      "breakpoints": true
     }
   ]
 }

@@ -22,7 +22,10 @@ for the Phase 6 (Support) implementation plan, and
 deliberately left out. See [docs/plans/0007-phase7-subscriptions-plan.md](../plans/0007-phase7-subscriptions-plan.md)
 for the Phase 7 (Subscriptions) implementation plan, and
 [ADR 0007](../decisions/0007-subscriptions-phase7-scope.md) for what it
-deliberately left out.
+deliberately left out. See [docs/plans/0008-phase8-analytics-automation-plan.md](../plans/0008-phase8-analytics-automation-plan.md)
+for the Phase 8 (Analytics & Automation) implementation plan, and
+[ADR 0008](../decisions/0008-analytics-automation-phase8-scope.md) for what
+it deliberately left out.
 
 ## System shape
 
@@ -38,11 +41,14 @@ apps/api/src/modules/
   identity/       organizations, users, teams, roles, permissions, auth
   crm/            accounts, contacts, activities, timeline, search
   leads/          lead CRUD, scoring rules, qualification, conversion
-  sales/          opportunities, pipelines, stages, forecast/analytics
+  sales/          opportunities, pipelines, stages, forecast/analytics,
+                  automation (quote-acceptance -> stage auto-advance listener)
   products/       product catalog, volume-based price tiers
   quotes/         quotes, versions, templates, PDF, public acceptance
   support/        tickets, SLA policies, knowledge base
   subscriptions/  plans, subscriptions, renewal reminders (scheduled job)
+  analytics/      cross-entity dashboard metrics (reads other modules'
+                  schemas directly, owns no schema of its own)
   shared/         tenant context, event bus, audit listener, guards,
                   mailer/mail listener (email dispatch)
 ```
@@ -116,6 +122,11 @@ comment_added/deleted`, `sla_policy.created/updated/deleted`,
 Phase 7 events: `plan.created/updated/deleted`,
 `subscription.created/updated/cancelled/renewed/lapsed/deleted/
 renewal_reminder_sent`.
+Phase 8 introduced no new event types — its automation (quote acceptance
+auto-advancing a linked Opportunity's stage) is a second producer of the
+existing `opportunity.stage_changed`/`opportunity.won` events, and
+`quote.accepted`'s payload gained one field (`opportunityId`) so the
+listener has something to act on. See [ADR 0008](../decisions/0008-analytics-automation-phase8-scope.md).
 
 ## Audit
 
@@ -136,6 +147,7 @@ of this same table rather than maintaining its own history.
 | Temporal               | A workflow needs durable multi-day orchestration with retries beyond what a scheduled job table covers. Phase 7's renewal reminders confirmed a Postgres job table + `@nestjs/schedule` is still enough — see [ADR 0007](../decisions/0007-subscriptions-phase7-scope.md). |
 | OpenSearch             | Postgres full-text search stops being fast enough at real data volume. |
 | Separate databases per module | A module needs independent scaling/ownership by a separate team. |
+| `notifications` module (in-app center: bell icon, unread state, delivery preferences) | A specific phase's brief item names it explicitly — currently none has. Named only in ADR 0001's aspirational module list with zero implementation; Phase 8 ("Analytics & Automation") deliberately did not claim it — see [ADR 0008](../decisions/0008-analytics-automation-phase8-scope.md) decision #10. |
 
 ## Phase 1 scope
 
@@ -301,3 +313,45 @@ only, continuing Phase 6's `support.tickets.manage` narrowing move. Four
 `subscription.*` event types were added to `TIMELINE_EVENT_TYPES`, the
 fifth real use of that extension point after `lead.converted`, Phase 4's
 `opportunity.*`, Phase 5's `quote.*`, and Phase 6's `ticket.*` events.
+
+## Phase 8 scope
+
+Analytics & Automation — the last of the three items the brief's Section 36
+named for this phase, synthesized from scattered ADR breadcrumbs since
+there was no `ComingSoon` stub confirming its shape this time (see
+[ADR 0008](../decisions/0008-analytics-automation-phase8-scope.md) for the
+full reasoning). Three separable pieces:
+
+**Analytics** — a new `analytics` module (`GET /analytics/dashboard`,
+gated by a newly added `analytics.view` permission) that reads
+`sales.opportunities`/`subscriptions.subscriptions` directly rather than
+injecting `OpportunitiesService`/`SubscriptionsService`, the same
+direct-cross-schema-read precedent Quotes/Support/Subscriptions already set
+for reading `crm.accounts`/`crm.contacts` — applied here for the first time
+across two already-built top-level domains. Returns exactly the 7 metrics
+the dashboard home page's own placeholder card named: open/weighted
+pipeline value, win rate, open-opportunity count, MRR, ARR, and active-
+subscription count.
+
+**Automation** — one concrete, named piece: accepting a quote linked to an
+Opportunity now auto-advances that Opportunity to its pipeline's win stage.
+Lives as a `QuoteAcceptedListener` inside `sales/automation/`, reacting to
+the existing `quote.accepted` event (which gained one payload field,
+`opportunityId`) rather than Quotes calling into Sales directly — inverting
+the dependency direction ADR 0005 decision #9 was careful to avoid. Reuses
+`moveStage`'s exact update/event shape via two small dedicated methods
+(`PipelinesService.findWinStage`, `OpportunitiesService.
+autoAdvanceOnQuoteAccepted`), so an automated stage move is indistinguishable
+from a manual one on the account timeline, with zero Timeline code changes.
+
+**Advanced search** — `pg_trgm` fuzzy (typo-tolerant) ranking blended into
+the existing `SearchService`'s full-text queries, plus Leads onboarded as a
+third searchable type (gated on `leads.view`, not included by default so
+the Accounts page's existing typeahead is unaffected). No new frontend
+surface consumes the `lead` search type yet — a deliberate backend-ahead-
+of-frontend cut, recorded rather than silently left half-built.
+
+Out of scope, explicitly: payment/billing automation beyond what Phase 7
+already covers, any additional cross-module automations beyond the one the
+brief named, and the `notifications` module (see the deferred-tech table
+above).

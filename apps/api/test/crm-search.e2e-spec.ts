@@ -98,4 +98,43 @@ describe("CRM Search (e2e)", () => {
       .expect(200);
     expect(empty.body).toHaveLength(0);
   });
+
+  it("finds a typo'd account name via trigram similarity fuzzy matching", async () => {
+    const org = await registerOrg(app, "Fuzzy Search Org", "fz");
+
+    await request(app.getHttpServer())
+      .post("/api/v1/accounts")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ name: "Acme Corp" })
+      .expect(201);
+
+    const typoResults = await request(app.getHttpServer())
+      .get("/api/v1/search?q=Acmee%20Corp")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .expect(200);
+    expect(typoResults.body.some((r: { label: string }) => r.label === "Acme Corp")).toBe(true);
+  });
+
+  it("includes Leads only when explicitly requested via types=lead, gated on leads.view", async () => {
+    const org = await registerOrg(app, "Lead Search Org", "ls");
+
+    await request(app.getHttpServer())
+      .post("/api/v1/leads")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .send({ name: "Globodyne Prospect", source: "website" })
+      .expect(201);
+
+    const defaultTypes = await request(app.getHttpServer())
+      .get("/api/v1/search?q=Globodyne")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .expect(200);
+    expect(defaultTypes.body).toHaveLength(0); // default types are account+contact only
+
+    const withLeads = await request(app.getHttpServer())
+      .get("/api/v1/search?q=Globodyne&types=lead")
+      .set("Authorization", `Bearer ${org.accessToken}`)
+      .expect(200);
+    expect(withLeads.body).toHaveLength(1);
+    expect(withLeads.body[0]).toMatchObject({ type: "lead", label: "Globodyne Prospect" });
+  });
 });

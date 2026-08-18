@@ -80,7 +80,7 @@ export interface TimelineEntryDto {
 
 export interface SearchResultDto {
   id: string;
-  type: "account" | "contact";
+  type: "account" | "contact" | "lead";
   label: string;
   subLabel?: string;
   rank: number;

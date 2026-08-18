@@ -428,7 +428,7 @@ export class QuotesService {
     this.events.publish({
       eventType: "quote.accepted",
       organizationId: quote.organizationId,
-      payload: { quoteId: quote.id, accountId: quote.accountId },
+      payload: { quoteId: quote.id, accountId: quote.accountId, opportunityId: quote.opportunityId },
     });
     return this.findByToken(token);
   }
