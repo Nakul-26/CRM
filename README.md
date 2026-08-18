@@ -45,14 +45,20 @@ auto-advances that Opportunity to its pipeline's win stage); and advanced
 search — typo-tolerant fuzzy matching plus Leads onboarded as a searchable
 type.
 
-**Phase 9 (current):** Notifications — an in-app notification center. A
+**Phase 9:** Notifications — an in-app notification center. A
 bounded set of events (ticket assignment, an opportunity won/lost, a quote
 accepted/rejected) notifies the right person — never the person who just
 took the action themself — via a bell icon in the dashboard topbar with a
-live unread-count badge. See
+live unread-count badge.
+
+**Phase 10 (current):** Audit Log UI — the audit trail and its permission
+have existed since Phase 1; this phase adds the missing read side: a
+filterable, paginated `GET /audit-log` endpoint and a real dashboard page
+(filter bar, pager, per-event JSON payload viewer) replacing the old
+`ComingSoon` stub. See
 [docs/architecture/overview.md](docs/architecture/overview.md) for the full
 picture and
-[docs/architecture/overview.md#phase-9-scope](docs/architecture/overview.md#phase-9-scope)
+[docs/architecture/overview.md#phase-10-scope](docs/architecture/overview.md#phase-10-scope)
 for exactly what's built vs. deferred.
 
 ## Prerequisites

@@ -28,6 +28,9 @@ for the Phase 8 (Analytics & Automation) implementation plan, and
 it deliberately left out. See [docs/plans/0009-phase9-notifications-plan.md](../plans/0009-phase9-notifications-plan.md)
 for the Phase 9 (Notifications) implementation plan, and
 [ADR 0009](../decisions/0009-notifications-phase9-scope.md) for what it
+deliberately left out. See [docs/plans/0010-phase10-audit-log-plan.md](../plans/0010-phase10-audit-log-plan.md)
+for the Phase 10 (Audit Log UI) implementation plan, and
+[ADR 0010](../decisions/0010-audit-log-ui-phase10-scope.md) for what it
 deliberately left out.
 
 ## System shape
@@ -41,7 +44,8 @@ packages/*      Code shared between web and api (types, validation, config).
 
 ```text
 apps/api/src/modules/
-  identity/       organizations, users, teams, roles, permissions, auth
+  identity/       organizations, users, teams, roles, permissions, auth,
+                  audit log query (read side of the append-only audit trail)
   crm/            accounts, contacts, activities, timeline, search
   leads/          lead CRUD, scoring rules, qualification, conversion
   sales/          opportunities, pipelines, stages, forecast/analytics,
@@ -145,7 +149,10 @@ request id, correlation id) via `AuditListener`, an `@OnEvent("domain.event")`
 wildcard listener on the same event bus — per Section 14. Every module's
 events land here automatically; no per-module audit code is needed. The
 CRM module's account/contact timeline (see below) reads a filtered subset
-of this same table rather than maintaining its own history.
+of this same table rather than maintaining its own history. As of Phase 10,
+`GET /audit-log` (`identity/audit`, gated on the `audit.log.view` permission)
+exposes this same table to the dashboard, filtered and paginated — see
+[ADR 0010](../decisions/0010-audit-log-ui-phase10-scope.md).
 
 ## What's deferred, and the trigger to add it back
 
@@ -387,3 +394,16 @@ than org-scoped resource in the app. The frontend gets a bell icon in
 recent notifications. Delivery preferences/settings and an email digest of
 notifications are explicitly out of scope — recorded as a deferral, not a
 gap.
+
+## Phase 10 scope
+
+Audit Log UI — the runner-up candidate from Phase 9's scope question (see
+[ADR 0010](../decisions/0010-audit-log-ui-phase10-scope.md) for the full
+reasoning). The audit trail and its permission (`audit.log.view`) have
+existed since Phase 1; this phase adds the missing read side: a new
+`identity/audit` submodule (`GET /audit-log`, filterable by `eventType`/
+`actorId`/date range, `limit`/`offset` paginated — the app's first paginated
+endpoint) and a real dashboard page replacing the `ComingSoon` stub, with a
+filter bar, a Prev/Next pager, and a "View details" dialog that pretty-prints
+each event's raw payload. No new permission, no new event types, no schema
+change — purely additive read surface over data that already existed.

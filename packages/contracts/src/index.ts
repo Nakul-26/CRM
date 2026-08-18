@@ -12,3 +12,4 @@ export * from "./support";
 export * from "./subscriptions";
 export * from "./analytics";
 export * from "./notifications";
+export * from "./audit";
