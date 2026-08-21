@@ -63,6 +63,10 @@ function listAuditLog(app: INestApplication, token: string, query = "") {
   return request(app.getHttpServer()).get(`/api/v1/audit-log${query}`).set("Authorization", `Bearer ${token}`).expect(200);
 }
 
+function exportAuditLog(app: INestApplication, token: string, query = "", expectStatus = 200) {
+  return request(app.getHttpServer()).get(`/api/v1/audit-log/export${query}`).set("Authorization", `Bearer ${token}`).expect(expectStatus);
+}
+
 /**
  * AuditListener writes are fire-and-forget (DomainEventBus.publish uses a
  * synchronous emit, so an async @OnEvent handler's DB insert isn't awaited
@@ -219,5 +223,43 @@ describe("Audit Log (e2e)", () => {
     await listAuditLog(app, org.accessToken); // Owner has it — succeeds (asserted via 200 inside helper).
     await request(app.getHttpServer()).get("/api/v1/audit-log").set("Authorization", `Bearer ${member.accessToken}`).expect(403);
     await request(app.getHttpServer()).get("/api/v1/audit-log").expect(401);
+  });
+
+  describe("CSV export", () => {
+    it("returns a CSV with the expected headers, content type, and disposition", async () => {
+      const org = await registerOrg(app, "Audit Export Co", "aec");
+      await createAccount(app, org.accessToken, "Export Account");
+      await waitForAuditEntry(app, org.accessToken, "", (e) => e.eventType === "account.created");
+
+      const res = await exportAuditLog(app, org.accessToken);
+      expect(res.headers["content-type"]).toContain("text/csv");
+      expect(res.headers["content-disposition"]).toContain("attachment");
+      expect(res.headers["content-disposition"]).toContain(".csv");
+
+      const [header, ...rows] = res.text.trim().split("\r\n");
+      expect(header).toBe("ID,When,Event Type,Actor ID,Actor Name,Actor Email,IP,User Agent,Payload");
+      expect(rows.some((row) => row.includes("account.created"))).toBe(true);
+    });
+
+    it("narrows exported rows by the eventType filter, same as the list endpoint", async () => {
+      const org = await registerOrg(app, "Audit Export Filter Co", "aef");
+      const account = await createAccount(app, org.accessToken, "Export Filter Account");
+      await createOpportunity(app, org.accessToken, account.id, "Export Filter Deal");
+      await waitForStableAuditTotal(app, org.accessToken);
+
+      const res = await exportAuditLog(app, org.accessToken, "?eventType=account.created");
+      const [, ...rows] = res.text.trim().split("\r\n");
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.every((row) => row.includes("account.created"))).toBe(true);
+    });
+
+    it("requires the audit.log.view permission, and authentication", async () => {
+      const org = await registerOrg(app, "Audit Export Perm Co", "aep");
+      const member = await inviteSecondUser(app, org.accessToken, "aep-member", "Member");
+
+      await exportAuditLog(app, org.accessToken); // Owner has it — succeeds.
+      await request(app.getHttpServer()).get("/api/v1/audit-log/export").set("Authorization", `Bearer ${member.accessToken}`).expect(403);
+      await request(app.getHttpServer()).get("/api/v1/audit-log/export").expect(401);
+    });
   });
 });

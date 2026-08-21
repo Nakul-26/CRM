@@ -14,3 +14,6 @@ export interface AuditLogPageDto {
   items: AuditLogEntryDto[];
   total: number;
 }
+
+/** Above this many matching rows, GET /audit-log/export refuses and asks the caller to narrow filters. */
+export const AUDIT_LOG_EXPORT_MAX_ROWS = 10_000;

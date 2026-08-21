@@ -1,8 +1,10 @@
-import { Controller, Get, Query } from "@nestjs/common";
+import { Controller, Get, Query, Res } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
-import type { AuthenticatedUser } from "@sales-platform/contracts";
+import type { Response } from "express";
+import { AUDIT_LOG_EXPORT_MAX_ROWS, type AuthenticatedUser } from "@sales-platform/contracts";
 import { CurrentUser } from "../../../shared/decorators/current-user.decorator";
 import { RequirePermissions } from "../../../shared/decorators/require-permissions.decorator";
+import { assertWithinAuditExportLimit, toAuditCsv } from "./audit-export";
 import { AuditService } from "./audit.service";
 
 const DEFAULT_LIMIT = 50;
@@ -35,5 +37,31 @@ export class AuditController {
       limit: parsedLimit,
       offset: parsedOffset,
     });
+  }
+
+  @Get("export")
+  @RequirePermissions("audit.log.view")
+  async export(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+    @Query("eventType") eventType?: string,
+    @Query("actorId") actorId?: string,
+    @Query("dateFrom") dateFrom?: string,
+    @Query("dateTo") dateTo?: string,
+  ) {
+    const { items, total } = await this.audit.list(user.organizationId, {
+      eventType,
+      actorId,
+      dateFrom: dateFrom ? new Date(dateFrom) : undefined,
+      dateTo: dateTo ? new Date(dateTo) : undefined,
+      limit: AUDIT_LOG_EXPORT_MAX_ROWS,
+      offset: 0,
+    });
+    assertWithinAuditExportLimit(total);
+
+    const csv = toAuditCsv(items);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="audit-log-${Date.now()}.csv"`);
+    res.send(csv);
   }
 }

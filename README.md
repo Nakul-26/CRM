@@ -51,14 +51,21 @@ accepted/rejected) notifies the right person — never the person who just
 took the action themself — via a bell icon in the dashboard topbar with a
 live unread-count badge.
 
-**Phase 10 (current):** Audit Log UI — the audit trail and its permission
+**Phase 10:** Audit Log UI — the audit trail and its permission
 have existed since Phase 1; this phase adds the missing read side: a
 filterable, paginated `GET /audit-log` endpoint and a real dashboard page
 (filter bar, pager, per-event JSON payload viewer) replacing the old
-`ComingSoon` stub. See
+`ComingSoon` stub.
+
+**Phase 11 (current):** Audit Log CSV Export — the "CSV/export" item
+deliberately deferred when Phase 10 shipped. A `GET /audit-log/export`
+endpoint reuses the same filters as the list endpoint and returns a CSV
+(capped at 10,000 matching rows), with an "Export CSV" button on the
+dashboard page that disables itself once the current filters exceed that
+cap. See
 [docs/architecture/overview.md](docs/architecture/overview.md) for the full
 picture and
-[docs/architecture/overview.md#phase-10-scope](docs/architecture/overview.md#phase-10-scope)
+[docs/architecture/overview.md#phase-11-scope](docs/architecture/overview.md#phase-11-scope)
 for exactly what's built vs. deferred.
 
 ## Prerequisites

@@ -31,7 +31,10 @@ for the Phase 9 (Notifications) implementation plan, and
 deliberately left out. See [docs/plans/0010-phase10-audit-log-plan.md](../plans/0010-phase10-audit-log-plan.md)
 for the Phase 10 (Audit Log UI) implementation plan, and
 [ADR 0010](../decisions/0010-audit-log-ui-phase10-scope.md) for what it
-deliberately left out.
+deliberately left out. See [docs/plans/0011-phase11-csv-export-plan.md](../plans/0011-phase11-csv-export-plan.md)
+for the Phase 11 (Audit Log CSV Export) implementation plan, and
+[ADR 0011](../decisions/0011-audit-log-csv-export-phase11-scope.md) for what
+it deliberately left out.
 
 ## System shape
 
@@ -152,7 +155,10 @@ CRM module's account/contact timeline (see below) reads a filtered subset
 of this same table rather than maintaining its own history. As of Phase 10,
 `GET /audit-log` (`identity/audit`, gated on the `audit.log.view` permission)
 exposes this same table to the dashboard, filtered and paginated — see
-[ADR 0010](../decisions/0010-audit-log-ui-phase10-scope.md).
+[ADR 0010](../decisions/0010-audit-log-ui-phase10-scope.md). As of Phase 11,
+`GET /audit-log/export` returns the same filtered rows as CSV (capped at
+`AUDIT_LOG_EXPORT_MAX_ROWS`, currently 10,000 — see
+[ADR 0011](../decisions/0011-audit-log-csv-export-phase11-scope.md)).
 
 ## What's deferred, and the trigger to add it back
 
@@ -407,3 +413,22 @@ endpoint) and a real dashboard page replacing the `ComingSoon` stub, with a
 filter bar, a Prev/Next pager, and a "View details" dialog that pretty-prints
 each event's raw payload. No new permission, no new event types, no schema
 change — purely additive read surface over data that already existed.
+
+## Phase 11 scope
+
+Audit Log CSV export — the "CSV/export" item [ADR 0010](../decisions/0010-audit-log-ui-phase10-scope.md)
+point 7 explicitly deferred, picked up on request (see
+[ADR 0011](../decisions/0011-audit-log-csv-export-phase11-scope.md) for the
+full reasoning). A new `GET /audit-log/export` endpoint reuses the existing
+list filters and a 10,000-row cap (`AUDIT_LOG_EXPORT_MAX_ROWS`,
+`packages/contracts/src/audit.ts`) — above the cap it returns `400` rather
+than building an unbounded response, since `audit_log` is the one table in
+the app that grows forever. A small shared CSV encoder
+(`apps/api/src/shared/csv/to-csv.ts`) and the audit-specific row shaping/cap
+check (`apps/api/src/modules/identity/audit/audit-export.ts`) are both pure,
+unit-tested functions, not wired to the database — the same "pure builder,
+unit-tested standalone" split Phase 5's `quote-pdf.ts` established. The
+dashboard page gained an "Export CSV" button (a plain `<a href>` download,
+matching the Quote PDF pattern), disabled automatically once the current
+filters match more rows than the cap allows. No new permission — reuses
+`audit.log.view`. Export of any other list is out of scope for this phase.

@@ -7,7 +7,7 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Dialog } from "@/components/ui/dialog";
 import { useAuditLog } from "@/hooks/use-audit-log";
 import { useUsers } from "@/hooks/use-users";
-import type { AuditLogEntryDto } from "@sales-platform/contracts";
+import { AUDIT_LOG_EXPORT_MAX_ROWS, type AuditLogEntryDto } from "@sales-platform/contracts";
 
 const PAGE_SIZE = 50;
 
@@ -49,6 +49,14 @@ export default function AuditLogPage() {
   const total = data?.total ?? 0;
   const canPrev = offset > 0;
   const canNext = offset + PAGE_SIZE < total;
+
+  const exportFilters = new URLSearchParams();
+  if (eventType) exportFilters.set("eventType", eventType);
+  if (actorId) exportFilters.set("actorId", actorId);
+  if (dateFrom) exportFilters.set("dateFrom", new Date(dateFrom).toISOString());
+  if (dateTo) exportFilters.set("dateTo", new Date(dateTo).toISOString());
+  const exportHref = `/api/gateway/audit-log/export?${exportFilters.toString()}`;
+  const canExport = total > 0 && total <= AUDIT_LOG_EXPORT_MAX_ROWS;
 
   return (
     <div className="flex flex-col gap-6">
@@ -102,6 +110,22 @@ export default function AuditLogPage() {
             }}
             className="h-9 rounded-md border border-input bg-background px-3 text-sm"
           />
+          {canExport ? (
+            <a href={exportHref}>
+              <Button variant="outline" size="sm">
+                Export CSV
+              </Button>
+            </a>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled
+              title={total > AUDIT_LOG_EXPORT_MAX_ROWS ? `Narrow filters — ${total.toLocaleString()} rows match, export limit is ${AUDIT_LOG_EXPORT_MAX_ROWS.toLocaleString()}` : undefined}
+            >
+              Export CSV
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <DataTable data={data?.items} isLoading={isLoading} emptyMessage="No audit events match these filters." rowKey={(e) => e.id} columns={columns} />
