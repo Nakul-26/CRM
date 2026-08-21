@@ -57,15 +57,24 @@ filterable, paginated `GET /audit-log` endpoint and a real dashboard page
 (filter bar, pager, per-event JSON payload viewer) replacing the old
 `ComingSoon` stub.
 
-**Phase 11 (current):** Audit Log CSV Export — the "CSV/export" item
+**Phase 11:** Audit Log CSV Export — the "CSV/export" item
 deliberately deferred when Phase 10 shipped. A `GET /audit-log/export`
 endpoint reuses the same filters as the list endpoint and returns a CSV
 (capped at 10,000 matching rows), with an "Export CSV" button on the
 dashboard page that disables itself once the current filters exceed that
-cap. See
+cap.
+
+**Phase 12 (current):** Audit Log Real-Time Streaming — the "real-time
+streaming" item deliberately deferred when Phase 10 shipped. A new
+`GET /audit-log/stream` SSE endpoint (the app's first real-time push
+transport, built on the existing in-process event bus, no new dependency)
+pushes a lightweight signal whenever a new audit row matching the current
+filters is written; the dashboard shows a "New audit events — Refresh"
+banner while viewing the newest page, instead of requiring a manual reload.
+See
 [docs/architecture/overview.md](docs/architecture/overview.md) for the full
 picture and
-[docs/architecture/overview.md#phase-11-scope](docs/architecture/overview.md#phase-11-scope)
+[docs/architecture/overview.md#phase-12-scope](docs/architecture/overview.md#phase-12-scope)
 for exactly what's built vs. deferred.
 
 ## Prerequisites

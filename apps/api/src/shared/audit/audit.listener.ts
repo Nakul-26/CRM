@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import { OnEvent } from "@nestjs/event-emitter";
+import { EventEmitter2, OnEvent } from "@nestjs/event-emitter";
 import type { DomainEvent } from "@sales-platform/contracts";
+import { AUDIT_LOG_ENTRY_CREATED_EVENT, type AuditStreamEvent } from "../../modules/identity/audit/audit-stream";
 import { DATABASE_CONNECTION, type Database } from "../../database/database.module";
 import { auditLog } from "../../database/schema";
 import { RequestContextService } from "../context/request-context";
@@ -17,6 +18,7 @@ export class AuditListener {
   constructor(
     @Inject(DATABASE_CONNECTION) private readonly db: Database,
     private readonly context: RequestContextService,
+    private readonly emitter: EventEmitter2,
   ) {}
 
   @OnEvent("domain.event")
@@ -34,6 +36,13 @@ export class AuditListener {
         ip: ctx?.ip ?? null,
         userAgent: ctx?.userAgent ?? null,
       });
+
+      this.emitter.emit(AUDIT_LOG_ENTRY_CREATED_EVENT, {
+        organizationId: event.organizationId,
+        eventType: event.eventType,
+        actorId: event.actorId ?? null,
+        createdAt: new Date().toISOString(),
+      } satisfies AuditStreamEvent);
     } catch (error) {
       // Audit logging must never break the business operation that
       // triggered it — log and move on rather than throwing.

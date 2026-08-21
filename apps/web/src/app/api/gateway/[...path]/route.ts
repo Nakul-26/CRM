@@ -28,6 +28,16 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
   });
 
   const contentType = apiRes.headers.get("content-type") ?? "application/json";
+
+  // SSE responses stay open indefinitely — pipe the stream through live instead of
+  // buffering it below, which would just hang forever waiting for it to end.
+  if (contentType.startsWith("text/event-stream")) {
+    return new NextResponse(apiRes.body, {
+      status: apiRes.status,
+      headers: { "content-type": contentType, "cache-control": "no-cache", connection: "keep-alive" },
+    });
+  }
+
   const headers: Record<string, string> = { "content-type": contentType };
   const contentDisposition = apiRes.headers.get("content-disposition");
   if (contentDisposition) headers["content-disposition"] = contentDisposition;

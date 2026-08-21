@@ -34,6 +34,9 @@ for the Phase 10 (Audit Log UI) implementation plan, and
 deliberately left out. See [docs/plans/0011-phase11-csv-export-plan.md](../plans/0011-phase11-csv-export-plan.md)
 for the Phase 11 (Audit Log CSV Export) implementation plan, and
 [ADR 0011](../decisions/0011-audit-log-csv-export-phase11-scope.md) for what
+it deliberately left out. See [docs/plans/0012-phase12-streaming-plan.md](../plans/0012-phase12-streaming-plan.md)
+for the Phase 12 (Audit Log Real-Time Streaming) implementation plan, and
+[ADR 0012](../decisions/0012-audit-log-streaming-phase12-scope.md) for what
 it deliberately left out.
 
 ## System shape
@@ -158,7 +161,11 @@ exposes this same table to the dashboard, filtered and paginated — see
 [ADR 0010](../decisions/0010-audit-log-ui-phase10-scope.md). As of Phase 11,
 `GET /audit-log/export` returns the same filtered rows as CSV (capped at
 `AUDIT_LOG_EXPORT_MAX_ROWS`, currently 10,000 — see
-[ADR 0011](../decisions/0011-audit-log-csv-export-phase11-scope.md)).
+[ADR 0011](../decisions/0011-audit-log-csv-export-phase11-scope.md)). As of
+Phase 12, `GET /audit-log/stream` (SSE) pushes a lightweight signal — not
+the full row — whenever a new matching entry is written, so the dashboard
+can offer a live "new events" refresh instead of requiring a manual reload;
+see [ADR 0012](../decisions/0012-audit-log-streaming-phase12-scope.md).
 
 ## What's deferred, and the trigger to add it back
 
@@ -432,3 +439,36 @@ dashboard page gained an "Export CSV" button (a plain `<a href>` download,
 matching the Quote PDF pattern), disabled automatically once the current
 filters match more rows than the cap allows. No new permission — reuses
 `audit.log.view`. Export of any other list is out of scope for this phase.
+
+## Phase 12 scope
+
+Audit Log real-time streaming — the "real-time streaming" item
+[ADR 0010](../decisions/0010-audit-log-ui-phase10-scope.md) point 7
+explicitly deferred, picked up on request (see
+[ADR 0012](../decisions/0012-audit-log-streaming-phase12-scope.md) for the
+full reasoning). The app's first real-time push transport: a new
+`GET /audit-log/stream` SSE endpoint on `AuditController`, built on
+NestJS's `@Sse()` decorator and the existing in-process `EventEmitter2` bus
+`AuditListener` already writes through — no new dependency, no WebSocket.
+`AuditListener` emits a lightweight `audit.log.entry.created` signal
+(`{ organizationId, eventType, actorId, createdAt }`, not the full row)
+right after each successful insert; the stream endpoint filters that signal
+by the caller's organization and the same `eventType`/`actorId`/date-range
+query filters the list/export endpoints already accept
+(`matchesAuditStreamFilters`, a pure, unit-tested function in
+`apps/api/src/modules/identity/audit/audit-stream.ts`, mirroring Phase 11's
+`audit-export.ts` split). The dashboard only opens the stream while viewing
+the newest page (`offset === 0`) and reacts to a matching signal with a
+"New audit events — Refresh" banner that refetches the existing list query,
+rather than splicing pushed data directly into the table — sidestepping
+pagination correctness entirely. The BFF gateway
+(`apps/web/src/app/api/gateway/[...path]/route.ts`) gained a streaming
+branch that pipes `text/event-stream` responses through live instead of
+buffering them, since the browser's `EventSource` must go through the same
+cookie-authenticated gateway as every other request. No new permission —
+reuses `audit.log.view`. In-process delivery means this doesn't fan out
+across multiple API instances if the app is ever horizontally scaled — an
+explicit, documented limitation, not a gap; that's the concrete trigger for
+Redis pub/sub or RabbitMQ later. Live push for any other list, or for
+notifications (which ADR 0009 deliberately kept polling-only), is out of
+scope for this phase.

@@ -1,3 +1,5 @@
+import http, { type IncomingMessage } from "node:http";
+import type { AddressInfo } from "node:net";
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { createTestApp } from "./setup/test-app";
@@ -105,6 +107,48 @@ async function waitForStableAuditTotal(app: INestApplication, token: string, tim
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
   return previous;
+}
+
+/** Binds the (never-explicitly-listening) test server to an ephemeral port so raw `http` requests can reach it, same server supertest already uses. */
+async function ensureListening(app: INestApplication): Promise<number> {
+  const server = app.getHttpServer();
+  if (!server.listening) {
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  }
+  return (server.address() as AddressInfo).port;
+}
+
+/** Opens the SSE endpoint and resolves once the response headers arrive, so the caller can trigger events after subscribing without missing them (no replay/backlog on this stream). */
+function connectAuditStream(port: number, token: string, query = ""): Promise<{ req: http.ClientRequest; res: IncomingMessage }> {
+  return new Promise((resolve, reject) => {
+    const req = http.get(
+      { host: "127.0.0.1", port, path: `/api/v1/audit-log/stream${query}`, headers: { Authorization: `Bearer ${token}` }, agent: false },
+      (res) => {
+        if (res.statusCode !== 200) {
+          req.destroy();
+          reject(new Error(`Expected 200 from the stream, got ${res.statusCode}`));
+          return;
+        }
+        resolve({ req, res });
+      },
+    );
+    req.on("error", reject);
+  });
+}
+
+/** Accumulates chunks off an open SSE response until `predicate` is satisfied or `timeoutMs` elapses (resolving with whatever was collected either way — the test asserts on the content). */
+function waitForStreamMatch(res: IncomingMessage, predicate: (buffer: string) => boolean, timeoutMs = 5000): Promise<string> {
+  return new Promise((resolve) => {
+    let buffer = "";
+    const timer = setTimeout(() => resolve(buffer), timeoutMs);
+    res.on("data", (chunk: Buffer) => {
+      buffer += chunk.toString("utf8");
+      if (predicate(buffer)) {
+        clearTimeout(timer);
+        resolve(buffer);
+      }
+    });
+  });
 }
 
 describe("Audit Log (e2e)", () => {
@@ -260,6 +304,74 @@ describe("Audit Log (e2e)", () => {
       await exportAuditLog(app, org.accessToken); // Owner has it — succeeds.
       await request(app.getHttpServer()).get("/api/v1/audit-log/export").set("Authorization", `Bearer ${member.accessToken}`).expect(403);
       await request(app.getHttpServer()).get("/api/v1/audit-log/export").expect(401);
+    });
+  });
+
+  describe("SSE stream", () => {
+    it("pushes an entry event when a new audit row is written for the org", async () => {
+      const org = await registerOrg(app, "Audit Stream Co", "asc");
+      const port = await ensureListening(app);
+      const { req, res } = await connectAuditStream(port, org.accessToken);
+
+      try {
+        await createAccount(app, org.accessToken, "Stream Account");
+        const buffer = await waitForStreamMatch(res, (b) => b.includes("account.created"));
+        expect(buffer).toContain("event: entry");
+        expect(buffer).toContain("account.created");
+      } finally {
+        req.destroy();
+      }
+    });
+
+    it("only pushes entries matching the eventType filter", async () => {
+      const org = await registerOrg(app, "Audit Stream Filter Co", "asf");
+      const account = await createAccount(app, org.accessToken, "Stream Filter Account");
+      const port = await ensureListening(app);
+      const { req, res } = await connectAuditStream(port, org.accessToken, "?eventType=opportunity.created");
+
+      try {
+        await createAccount(app, org.accessToken, "Unrelated Stream Account");
+        await createOpportunity(app, org.accessToken, account.id, "Stream Filter Deal");
+        const buffer = await waitForStreamMatch(res, (b) => b.includes("opportunity.created"));
+        expect(buffer).toContain("event: entry");
+        expect(buffer).toContain("opportunity.created");
+        expect(buffer).not.toContain("account.created");
+      } finally {
+        req.destroy();
+      }
+    });
+
+    it("does not push another org's audit events", async () => {
+      const orgA = await registerOrg(app, "Audit Stream Iso A", "asia");
+      const orgB = await registerOrg(app, "Audit Stream Iso B", "asib");
+      const accountB = await createAccount(app, orgB.accessToken, "Stream Iso B Account");
+      // AuditListener writes are fire-and-forget (see the comment on waitForAuditEntry above) — wait for
+      // this setup account's own audit row to settle so its (possibly delayed) stream event can't race
+      // into the window after the SSE connection below opens and be mistaken for a cross-org leak.
+      await waitForAuditEntry(app, orgB.accessToken, "", (e) => e.eventType === "account.created");
+      const port = await ensureListening(app);
+      const { req, res } = await connectAuditStream(port, orgB.accessToken);
+
+      try {
+        // orgA's event must not reach orgB's stream; orgB's own event (a different
+        // eventType, so it's unambiguous which org it came from) should.
+        await createAccount(app, orgA.accessToken, "Stream Iso A Account");
+        await createOpportunity(app, orgB.accessToken, accountB.id, "Stream Iso B Deal");
+        const buffer = await waitForStreamMatch(res, (b) => b.includes("opportunity.created"));
+        expect(buffer).toContain("event: entry");
+        expect(buffer).toContain("opportunity.created");
+        expect(buffer).not.toContain("account.created");
+      } finally {
+        req.destroy();
+      }
+    });
+
+    it("requires the audit.log.view permission, and authentication", async () => {
+      const org = await registerOrg(app, "Audit Stream Perm Co", "aspe");
+      const member = await inviteSecondUser(app, org.accessToken, "aspe-member", "Member");
+
+      await request(app.getHttpServer()).get("/api/v1/audit-log/stream").set("Authorization", `Bearer ${member.accessToken}`).expect(403);
+      await request(app.getHttpServer()).get("/api/v1/audit-log/stream").expect(401);
     });
   });
 });

@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Dialog } from "@/components/ui/dialog";
 import { useAuditLog } from "@/hooks/use-audit-log";
+import { useAuditLogStream } from "@/hooks/use-audit-log-stream";
 import { useUsers } from "@/hooks/use-users";
 import { AUDIT_LOG_EXPORT_MAX_ROWS, type AuditLogEntryDto } from "@sales-platform/contracts";
 
@@ -20,7 +21,7 @@ export default function AuditLogPage() {
   const [selected, setSelected] = useState<AuditLogEntryDto | null>(null);
 
   const { data: users } = useUsers();
-  const { data, isLoading } = useAuditLog({
+  const { data, isLoading, refetch } = useAuditLog({
     eventType: eventType || undefined,
     actorId: actorId || undefined,
     dateFrom: dateFrom ? new Date(dateFrom).toISOString() : undefined,
@@ -28,6 +29,15 @@ export default function AuditLogPage() {
     limit: PAGE_SIZE,
     offset,
   });
+  const { hasNew, dismiss } = useAuditLogStream(
+    {
+      eventType: eventType || undefined,
+      actorId: actorId || undefined,
+      dateFrom: dateFrom ? new Date(dateFrom).toISOString() : undefined,
+      dateTo: dateTo ? new Date(dateTo).toISOString() : undefined,
+    },
+    offset === 0,
+  );
 
   const resetToFirstPage = () => setOffset(0);
 
@@ -128,6 +138,21 @@ export default function AuditLogPage() {
           )}
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          {hasNew && (
+            <div className="flex items-center justify-between rounded-md border border-border bg-muted px-3 py-2 text-sm">
+              <span>New audit events have come in.</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  dismiss();
+                  refetch();
+                }}
+              >
+                Refresh
+              </Button>
+            </div>
+          )}
           <DataTable data={data?.items} isLoading={isLoading} emptyMessage="No audit events match these filters." rowKey={(e) => e.id} columns={columns} />
           {total > 0 && (
             <div className="flex items-center justify-between text-sm text-muted-foreground">
