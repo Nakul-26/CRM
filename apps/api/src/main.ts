@@ -7,7 +7,10 @@ import type { ApiEnv } from "@sales-platform/config";
 import { AppModule } from "./app.module";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // rawBody: true so the Stripe webhook route can verify the signature
+  // against the exact request bytes (req.rawBody) while every other route
+  // still gets the normal parsed JSON body.
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
   const config = app.get(ConfigService<ApiEnv, true>);
 
   app.use(helmet());

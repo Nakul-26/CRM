@@ -64,17 +64,24 @@ endpoint reuses the same filters as the list endpoint and returns a CSV
 dashboard page that disables itself once the current filters exceed that
 cap.
 
-**Phase 12 (current):** Audit Log Real-Time Streaming — the "real-time
+**Phase 12:** Audit Log Real-Time Streaming — the "real-time
 streaming" item deliberately deferred when Phase 10 shipped. A new
 `GET /audit-log/stream` SSE endpoint (the app's first real-time push
 transport, built on the existing in-process event bus, no new dependency)
 pushes a lightweight signal whenever a new audit row matching the current
 filters is written; the dashboard shows a "New audit events — Refresh"
 banner while viewing the newest page, instead of requiring a manual reload.
-See
+
+**Phase 13 (current):** Payment Processing — the "no payment
+processing" item Phase 7 deliberately deferred. A new, pluggable
+`PaymentProvider` (a real Stripe Checkout adapter plus a deterministic mock
+used by default, `PAYMENT_PROVIDER=mock|stripe`, fully testable with no
+external account) powers a new `POST /payments/checkout` for paying to
+renew a subscription — the existing free "extend the period" renewal stays
+available alongside it. See
 [docs/architecture/overview.md](docs/architecture/overview.md) for the full
 picture and
-[docs/architecture/overview.md#phase-12-scope](docs/architecture/overview.md#phase-12-scope)
+[docs/architecture/overview.md#phase-13-scope](docs/architecture/overview.md#phase-13-scope)
 for exactly what's built vs. deferred.
 
 ## Prerequisites

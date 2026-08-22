@@ -10,6 +10,7 @@ export * from "./products";
 export * from "./quotes";
 export * from "./support";
 export * from "./subscriptions";
+export * from "./payments";
 export * from "./analytics";
 export * from "./notifications";
 export * from "./audit";

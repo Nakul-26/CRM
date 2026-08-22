@@ -20,6 +20,12 @@ interface QuoteOutcomePayload {
   ownerId: string | null;
 }
 
+interface PaymentOutcomePayload {
+  paymentId: string;
+  subscriptionId: string;
+  recipientId: string | null;
+}
+
 /**
  * A bounded, evidenced set of events — each has a single clear recipient
  * (`ownerId`/`assigneeId`) already carried in its payload. See
@@ -80,6 +86,24 @@ export class NotificationsListener {
       type: event.eventType,
       title: "Your quote was rejected",
       link: `/quotes/${quoteId}`,
+    });
+  }
+
+  @OnEvent("payment.succeeded")
+  async onPaymentSucceeded(event: DomainEvent<"payment.succeeded", PaymentOutcomePayload>): Promise<void> {
+    await this.notify(event, event.payload.recipientId, {
+      type: event.eventType,
+      title: "A subscription renewal payment succeeded",
+      link: "/subscriptions",
+    });
+  }
+
+  @OnEvent("payment.failed")
+  async onPaymentFailed(event: DomainEvent<"payment.failed", PaymentOutcomePayload>): Promise<void> {
+    await this.notify(event, event.payload.recipientId, {
+      type: event.eventType,
+      title: "A subscription renewal payment failed",
+      link: "/subscriptions",
     });
   }
 

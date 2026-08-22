@@ -9,6 +9,7 @@ import { SubscriptionForm } from "@/components/subscriptions/subscription-form";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useAccounts } from "@/hooks/use-accounts";
 import { useCancelSubscription, useCreateSubscription, useRenewSubscription, useSubscriptions } from "@/hooks/use-subscriptions";
+import { useStartCheckout } from "@/hooks/use-payments";
 import { ApiError } from "@/lib/http";
 import { SUBSCRIPTION_STATUSES, type CreateSubscriptionInput, type SubscriptionDto } from "@sales-platform/contracts";
 
@@ -20,6 +21,7 @@ export default function SubscriptionsPage() {
   const create = useCreateSubscription();
   const cancel = useCancelSubscription();
   const renew = useRenewSubscription();
+  const startCheckout = useStartCheckout();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +59,16 @@ export default function SubscriptionsPage() {
     }
   };
 
+  const onRenewWithPayment = async (id: string) => {
+    setError(null);
+    try {
+      const { checkoutUrl } = await startCheckout.mutateAsync(id);
+      window.location.href = checkoutUrl;
+    } catch (err) {
+      setError(err instanceof ApiError ? err.body.error.message : "Failed to start checkout");
+    }
+  };
+
   const columns: DataTableColumn<SubscriptionDto>[] = [
     { header: "Plan", cell: (s) => <span className="font-medium">{s.planName}</span> },
     { header: "Account", cell: (s) => accountName(s.accountId) },
@@ -68,8 +80,11 @@ export default function SubscriptionsPage() {
       cell: (s) =>
         canEdit && s.status !== "cancelled" ? (
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => onRenewWithPayment(s.id)}>
+              Renew with payment
+            </Button>
             <Button variant="outline" size="sm" onClick={() => onRenew(s.id)}>
-              Renew
+              Renew (no charge)
             </Button>
             <Button variant="outline" size="sm" onClick={() => onCancel(s.id)}>
               Cancel

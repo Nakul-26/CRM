@@ -37,6 +37,9 @@ for the Phase 11 (Audit Log CSV Export) implementation plan, and
 it deliberately left out. See [docs/plans/0012-phase12-streaming-plan.md](../plans/0012-phase12-streaming-plan.md)
 for the Phase 12 (Audit Log Real-Time Streaming) implementation plan, and
 [ADR 0012](../decisions/0012-audit-log-streaming-phase12-scope.md) for what
+it deliberately left out. See [docs/plans/0013-phase13-payment-processing-plan.md](../plans/0013-phase13-payment-processing-plan.md)
+for the Phase 13 (Payment Processing) implementation plan, and
+[ADR 0013](../decisions/0013-payment-processing-phase13-scope.md) for what
 it deliberately left out.
 
 ## System shape
@@ -472,3 +475,44 @@ explicit, documented limitation, not a gap; that's the concrete trigger for
 Redis pub/sub or RabbitMQ later. Live push for any other list, or for
 notifications (which ADR 0009 deliberately kept polling-only), is out of
 scope for this phase.
+
+## Phase 13 scope
+
+Payment processing — the "no payment processing" deferral
+[ADR 0007](../decisions/0007-subscriptions-phase7-scope.md) point 2 recorded
+when Subscriptions shipped, picked up on request (see
+[ADR 0013](../decisions/0013-payment-processing-phase13-scope.md) for the
+full reasoning). Scoped to exactly one flow: paying to renew a subscription.
+A new `payments` module, its own `PaymentProvider` interface with two
+implementations — `MockPaymentProvider` (no network, the default; its
+"checkout" is an in-app page, `apps/web/src/app/pay/mock/[paymentId]/page.tsx`)
+and `StripePaymentProvider` (real Stripe Checkout Sessions + webhook
+signature verification, opt-in via `PAYMENT_PROVIDER=stripe`) — selected by
+a factory provider, the same "one interface, swappable implementation,
+env-var selected" shape `MailerService` already established. A new
+`POST /payments/checkout` starts a paid renewal; the existing free
+`POST /subscriptions/:id/renew` is untouched (kept as a manual override).
+Once a payment succeeds — via the mock provider's `complete` endpoint or a
+verified Stripe webhook — `PaymentsService` calls the existing
+`SubscriptionsService.renew()` directly, so period math, reminder
+scheduling, and `subscription.renewed` stay one source of truth regardless
+of whether renewal was free or paid. Completion is idempotent (a second
+completion of an already-`succeeded`/`failed` payment is a no-op), covering
+both Stripe's at-least-once webhook delivery and a double-clicked mock "Pay"
+button. A failed or abandoned payment leaves the subscription exactly as it
+was — no new subscription status was introduced; it simply relies on the
+existing lazy `lapseIfDue()` if the period end passes with no successful
+renewal. `payment.succeeded`/`payment.failed` extend `NotificationsListener`
+(notifying whoever started the checkout) and `payment.succeeded` extends the
+account timeline. No new permission — reuses `subscriptions.edit`/`.view`.
+Quote-acceptance payment collection, paid initial subscription creation,
+refunds, retries/dunning, multi-currency, and a dedicated payment-history
+UI (the `GET /payments/subscriptions/:id` endpoint exists and is tested,
+but nothing in the frontend surfaces it beyond the mock checkout page
+itself) are all out of scope for this phase. The Stripe adapter's actual
+network call has no automated test in this environment (no live/test Stripe
+key available) — verified only via a mocked-client unit test and
+type-checking; its webhook signature verification, by contrast, is a real,
+locally-signed test (`stripe.webhooks.generateTestHeaderString`/
+`constructEvent` are pure local HMAC operations, no network), exercised
+both as a unit test and end-to-end in `payments.e2e-spec.ts`.

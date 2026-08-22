@@ -16,6 +16,7 @@ import { ProductsModule } from "./modules/products/products.module";
 import { QuotesModule } from "./modules/quotes/quotes.module";
 import { SupportModule } from "./modules/support/support.module";
 import { SubscriptionsModule } from "./modules/subscriptions/subscriptions.module";
+import { PaymentsModule } from "./modules/payments/payments.module";
 import { AnalyticsModule } from "./modules/analytics/analytics.module";
 import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { HealthModule } from "./modules/health/health.module";
@@ -36,6 +37,7 @@ import { HealthModule } from "./modules/health/health.module";
     QuotesModule,
     SupportModule,
     SubscriptionsModule,
+    PaymentsModule,
     AnalyticsModule,
     NotificationsModule,
     HealthModule,

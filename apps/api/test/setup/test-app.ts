@@ -16,6 +16,11 @@ process.env.JWT_REFRESH_SECRET ??= "test-refresh-secret-at-least-32-characters-l
 process.env.JWT_ACCESS_TTL ??= "15m";
 process.env.JWT_REFRESH_TTL ??= "30d";
 process.env.CORS_ORIGIN ??= "http://localhost:3000";
+// Set (but PAYMENT_PROVIDER left at its "mock" default) so the Stripe
+// webhook route's signature verification — pure/local, no network — can
+// still be exercised in e2e tests regardless of which provider is active
+// for checkout creation.
+process.env.STRIPE_WEBHOOK_SECRET ??= "whsec_test_secret_for_e2e_signature_verification";
 
 let prepared = false;
 
@@ -44,7 +49,7 @@ export async function createTestApp(): Promise<INestApplication> {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { AppModule } = require("../../src/app.module");
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-  const app = moduleRef.createNestApplication();
+  const app = moduleRef.createNestApplication({ rawBody: true });
   // Must mirror main.ts's bootstrap exactly, or routes exist at the wrong
   // path under test (this bit us: /auth/register instead of /api/v1/auth/register).
   app.setGlobalPrefix("api/v1");

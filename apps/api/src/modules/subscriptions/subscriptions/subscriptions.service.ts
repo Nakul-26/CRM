@@ -157,6 +157,11 @@ export class SubscriptionsService {
     return this.serialize(subscription);
   }
 
+  /** Raw row read for PaymentsService — needs price/status/accountId/createdBy without duplicating getRawSubscription's query. */
+  async getForCharge(organizationId: string, subscriptionId: string): Promise<SubscriptionRow> {
+    return this.getRawSubscription(organizationId, subscriptionId);
+  }
+
   async delete(organizationId: string, actorId: string, subscriptionId: string) {
     await this.getRawSubscription(organizationId, subscriptionId);
 

@@ -20,6 +20,12 @@ export const apiEnvSchema = z.object({
   SMTP_FROM: z.string().default("no-reply@sales-platform.local"),
 
   WEB_APP_URL: z.string().url().default("http://localhost:3000"),
+
+  // Only STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET are needed when
+  // PAYMENT_PROVIDER=stripe; the mock provider (default) needs neither.
+  PAYMENT_PROVIDER: z.enum(["mock", "stripe"]).default("mock"),
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
 });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

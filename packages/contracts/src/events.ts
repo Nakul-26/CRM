@@ -128,20 +128,28 @@ export const SUBSCRIPTIONS_EVENT_TYPES = [
 
 export type SubscriptionsEventType = (typeof SUBSCRIPTIONS_EVENT_TYPES)[number];
 
+export const PAYMENTS_EVENT_TYPES = [
+  "payment.checkout_started",
+  "payment.succeeded",
+  "payment.failed",
+] as const;
+
+export type PaymentsEventType = (typeof PAYMENTS_EVENT_TYPES)[number];
+
 /**
  * Subset of CRM_EVENT_TYPES/LEAD_EVENT_TYPES/SALES_EVENT_TYPES/QUOTES_EVENT_TYPES/
- * SUPPORT_EVENT_TYPES/SUBSCRIPTIONS_EVENT_TYPES that belongs on a customer-facing
- * account timeline (see TimelineService). Later phases append their own
- * "worthy" event types here to slot into the timeline without touching the
- * merge query itself. `lead.converted` was the first of those, the four
- * `opportunity.*` types the second, the four `quote.*` types the third, the
- * three `ticket.*` types the fourth, and the four `subscription.*` types
- * below the fifth — proving the same extension point works for a fifth,
- * unrelated module (including one whose events can originate from a
- * scheduled job with no request context — see RenewalsService).
- * `subscription.renewal_reminder_sent` is deliberately left off: it's an
- * operational detail (a notification fired), not a customer-facing
- * milestone, the same selectivity `ticket.assigned` was left off for.
+ * SUPPORT_EVENT_TYPES/SUBSCRIPTIONS_EVENT_TYPES/PAYMENTS_EVENT_TYPES that belongs
+ * on a customer-facing account timeline (see TimelineService). Later phases
+ * append their own "worthy" event types here to slot into the timeline
+ * without touching the merge query itself. `lead.converted` was the first of
+ * those, the four `opportunity.*` types the second, the four `quote.*` types
+ * the third, the three `ticket.*` types the fourth, the four `subscription.*`
+ * types the fifth, and `payment.succeeded` the sixth — proving the same
+ * extension point works for a sixth, unrelated module.
+ * `subscription.renewal_reminder_sent` and `payment.checkout_started`/
+ * `payment.failed` are deliberately left off: operational details (a
+ * notification fired, a checkout merely started), not customer-facing
+ * milestones — the same selectivity `ticket.assigned` was left off for.
  */
 export const TIMELINE_EVENT_TYPES = [
   "account.created",
@@ -166,6 +174,7 @@ export const TIMELINE_EVENT_TYPES = [
   "subscription.cancelled",
   "subscription.renewed",
   "subscription.lapsed",
+  "payment.succeeded",
 ] as const;
 
 export type TimelineEventType = (typeof TIMELINE_EVENT_TYPES)[number];
