@@ -4,6 +4,7 @@ import { JwtModule } from "@nestjs/jwt";
 import { RequestContextService } from "./context/request-context";
 import { DomainEventBus } from "./events/domain-event-bus";
 import { AuditListener } from "./audit/audit.listener";
+import { RabbitMQAuditTransport } from "./audit/rabbitmq-audit-transport";
 import { MailerService } from "./mail/mailer.service";
 import { MailListener } from "./mail/mail.listener";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
@@ -17,6 +18,7 @@ import { GlobalExceptionFilter } from "./filters/http-exception.filter";
     RequestContextService,
     DomainEventBus,
     AuditListener,
+    RabbitMQAuditTransport,
     MailerService,
     MailListener,
     { provide: APP_GUARD, useClass: JwtAuthGuard },

@@ -27,6 +27,13 @@ export const refreshTokenSchema = z.object({
 });
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
 
+export const oidcTokenSchema = z.object({
+  code: z.string().min(1),
+  redirectUri: z.string().min(1),
+  organizationSlug: z.string().trim().toLowerCase().optional(),
+});
+export type OidcTokenInput = z.infer<typeof oidcTokenSchema>;
+
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;

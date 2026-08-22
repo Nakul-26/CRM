@@ -1,6 +1,15 @@
 /** Server-only: base URL the Next.js server uses to reach the API — never sent to the browser. */
 export const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? "http://localhost:4000";
 
+/**
+ * Server-only OIDC config for the SSO login redirect — the client only ever
+ * sees NEXT_PUBLIC_OIDC_ENABLED (whether to render the button); building the
+ * actual Keycloak authorize URL happens in /api/auth/oidc/start, server-side.
+ */
+export const OIDC_ISSUER_URL = process.env.OIDC_ISSUER_URL ?? "";
+export const OIDC_CLIENT_ID = process.env.OIDC_CLIENT_ID ?? "";
+export const OIDC_REDIRECT_URI = process.env.OIDC_REDIRECT_URI ?? "";
+
 export const ACCESS_COOKIE = "sp_access_token";
 export const REFRESH_COOKIE = "sp_refresh_token";
 

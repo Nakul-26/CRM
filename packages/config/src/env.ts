@@ -26,6 +26,34 @@ export const apiEnvSchema = z.object({
   PAYMENT_PROVIDER: z.enum(["mock", "stripe"]).default("mock"),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+
+  // Only RABBITMQ_URL is needed when EVENT_BUS_TRANSPORT=rabbitmq; the
+  // in-process default (EventEmitter2 only) needs neither.
+  EVENT_BUS_TRANSPORT: z.enum(["in-process", "rabbitmq"]).default("in-process"),
+  RABBITMQ_URL: z.string().optional(),
+
+  // Only OPENSEARCH_URL is needed when SEARCH_PROVIDER=opensearch; the
+  // Postgres default (tsvector + pg_trgm) needs neither.
+  SEARCH_PROVIDER: z.enum(["postgres", "opensearch"]).default("postgres"),
+  OPENSEARCH_URL: z.string().optional(),
+
+  // Only TEMPORAL_ADDRESS/TEMPORAL_NAMESPACE are needed when
+  // WORKFLOW_ENGINE=temporal; the in-process default (Postgres cron table)
+  // needs neither. DUNNING_RETRY_DELAYS_MS (comma-separated ms) overrides
+  // the production day-scale backoff schedule — for e2e tests only.
+  WORKFLOW_ENGINE: z.enum(["in-process", "temporal"]).default("in-process"),
+  TEMPORAL_ADDRESS: z.string().optional(),
+  TEMPORAL_NAMESPACE: z.string().optional(),
+  DUNNING_RETRY_DELAYS_MS: z.string().optional(),
+
+  // Additive, not a swap: password login always works. When enabled, an
+  // already-provisioned local user (matched by verified email) can also
+  // obtain a token pair via a Keycloak/OIDC login — see
+  // docs/decisions/0017-keycloak-oidc-phase17-scope.md.
+  AUTH_OIDC_ENABLED: z.coerce.boolean().default(false),
+  OIDC_ISSUER_URL: z.string().optional(),
+  OIDC_CLIENT_ID: z.string().optional(),
+  OIDC_CLIENT_SECRET: z.string().optional(),
 });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;
@@ -43,6 +71,14 @@ export function loadApiEnv(source: NodeJS.ProcessEnv = process.env): ApiEnv {
 
 export const webEnvSchema = z.object({
   NEXT_PUBLIC_API_URL: z.string().url().default("http://localhost:4000"),
+
+  // The only client-visible OIDC flag — toggles whether the "Sign in with
+  // SSO" button renders. Building the actual Keycloak redirect happens
+  // server-side in /api/auth/oidc/start (see server-config.ts's
+  // OIDC_ISSUER_URL/OIDC_CLIENT_ID/OIDC_REDIRECT_URI, which are
+  // deliberately NOT NEXT_PUBLIC_ — same "server-only" posture as
+  // API_INTERNAL_URL).
+  NEXT_PUBLIC_OIDC_ENABLED: z.coerce.boolean().default(false),
 });
 
 export type WebEnv = z.infer<typeof webEnvSchema>;

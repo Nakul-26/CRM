@@ -39,6 +39,117 @@ services:
       - "8025:8025" # web UI
       - "1025:1025" # smtp
 
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: unless-stopped
+    ports:
+      # Host ports 5673/15673 (not 5672/15672) — same reason as Postgres/Redis
+      # above: shifted off the defaults in case another local project claims them.
+      - "5673:5672"   # AMQP
+      - "15673:15672" # management UI/HTTP API
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  opensearch:
+    image: opensearchproject/opensearch:2
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+      # Required by the image's setup script since OpenSearch 2.12, even
+      # though plugins.security.disabled=true turns security enforcement
+      # back off once the node is actually running — local/dev only.
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=SalesPlatform!Dev1
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      # Host port 9201 (not 9200) — same reason as Postgres/Redis/RabbitMQ
+      # above: shifted off the default in case another local project claims it.
+      - "9201:9200"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+
+  temporal:
+    image: temporalio/auto-setup:1.24
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=sales_platform
+      - POSTGRES_PWD=sales_platform
+      - POSTGRES_SEEDS=postgres
+    ports:
+      # Host port 7234 (not 7233) — same reason as every other service above:
+      # shifted off the default in case another local project claims it.
+      - "7234:7233"
+    healthcheck:
+      # The server only binds/advertises on the container's own IP, not
+      # loopback — confirmed empirically (`temporal operator cluster health`
+      # against localhost:7233 fails with "connection refused" even once the
+      # server is fully up), same class of quirk as OpenSearch's admin
+      # password requirement.
+      test: ["CMD-SHELL", "temporal operator cluster health --address $(hostname -i):7233"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    restart: unless-stopped
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - "8081:8080"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    restart: unless-stopped
+    command: start-dev --import-realm
+    environment:
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KC_HTTP_ENABLED=true
+      - KC_HOSTNAME_STRICT=false
+    volumes:
+      - ./docker/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    ports:
+      # Host port 8082 (not 8080) — same reason as every other service above:
+      # shifted off the default in case another local project claims it.
+      - "8082:8080"
+    healthcheck:
+      # No curl/wget in this image (UBI-micro base) — confirmed empirically,
+      # same class of quirk as every prior phase's infra surprise. A raw
+      # /dev/tcp probe via the shell's own redirection is the only
+      # dependency-free option available inside the container.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /realms/sales-platform HTTP/1.0\r\n\r\n' >&3 && head -c 15 <&3 | grep -q 200"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
 volumes:
   postgres_data:
   redis_data:
+  rabbitmq_data:
+  opensearch_data:

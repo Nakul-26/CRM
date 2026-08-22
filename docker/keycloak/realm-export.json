@@ -1,0 +1,34 @@
+{
+  "realm": "sales-platform",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "clients": [
+    {
+      "clientId": "sales-platform-api",
+      "name": "Sales Platform API",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "dev-oidc-client-secret-change-me",
+      "redirectUris": ["http://localhost:3000/api/auth/oidc/callback"],
+      "webOrigins": ["http://localhost:3000"],
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false
+    }
+  ],
+  "users": [
+    {
+      "username": "sso-test-user",
+      "email": "sso-test@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "SSO",
+      "lastName": "Test",
+      "credentials": [
+        { "type": "password", "value": "SsoTest123!", "temporary": false }
+      ]
+    }
+  ]
+}

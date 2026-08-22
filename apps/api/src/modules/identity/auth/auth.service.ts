@@ -19,6 +19,7 @@ import { OrganizationsService } from "../organizations/organizations.service";
 import { RolesService } from "../roles/roles.service";
 import { UsersService } from "../users/users.service";
 import { PasswordService } from "./password.service";
+import type { OidcIdTokenClaims } from "./oidc.service";
 
 interface AccessTokenClaims {
   sub: string;
@@ -92,17 +93,48 @@ export class AuthService {
   }
 
   async login(input: LoginInput): Promise<AuthResponse> {
-    const candidates = await this.users.findByEmailAcrossOrgs(input.email);
+    const user = await this.resolveLoginCandidate(input.email, input.organizationSlug);
+
+    const passwordOk = await this.passwords.compare(input.password, user.passwordHash);
+    if (!passwordOk) {
+      this.recordFailedLogin(input.email, user.organizationId);
+      throw new UnauthorizedException({ code: ERROR_CODES.INVALID_CREDENTIALS, message: "Invalid email or password" });
+    }
+
+    return this.completeLogin(user);
+  }
+
+  /**
+   * The OIDC counterpart to login() — same local-user resolution
+   * (email + optional organizationSlug disambiguation), but the ID token's
+   * signature/issuer/audience were already verified by OidcService against
+   * our configured Keycloak realm, so there's no password to check here.
+   * Requires no JIT provisioning: rejects (same INVALID_CREDENTIALS shape as
+   * a bad password) if no matching local user exists — see
+   * docs/decisions/0017-keycloak-oidc-phase17-scope.md.
+   */
+  async loginWithOidc(claims: OidcIdTokenClaims, organizationSlug?: string): Promise<AuthResponse> {
+    if (!claims.email || !claims.email_verified) {
+      throw new UnauthorizedException({ code: ERROR_CODES.INVALID_CREDENTIALS, message: "OIDC token has no verified email" });
+    }
+
+    const user = await this.resolveLoginCandidate(claims.email, organizationSlug);
+    return this.completeLogin(user);
+  }
+
+  /** Shared by login() and loginWithOidc(): resolves exactly one active user for an email, disambiguating by organizationSlug when given. */
+  private async resolveLoginCandidate(email: string, organizationSlug?: string) {
+    const candidates = await this.users.findByEmailAcrossOrgs(email);
     const active = candidates.filter((c) => c.isActive);
 
     let matched = active;
-    if (input.organizationSlug) {
-      const org = await this.organizations.findBySlug(input.organizationSlug);
+    if (organizationSlug) {
+      const org = await this.organizations.findBySlug(organizationSlug);
       matched = org ? active.filter((c) => c.organizationId === org.id) : [];
     }
 
     if (matched.length === 0) {
-      this.recordFailedLogin(input.email);
+      this.recordFailedLogin(email);
       throw new UnauthorizedException({ code: ERROR_CODES.INVALID_CREDENTIALS, message: "Invalid email or password" });
     }
 
@@ -113,13 +145,11 @@ export class AuthService {
       });
     }
 
-    const user = matched[0]!;
-    const passwordOk = await this.passwords.compare(input.password, user.passwordHash);
-    if (!passwordOk) {
-      this.recordFailedLogin(input.email, user.organizationId);
-      throw new UnauthorizedException({ code: ERROR_CODES.INVALID_CREDENTIALS, message: "Invalid email or password" });
-    }
+    return matched[0]!;
+  }
 
+  /** Shared tail of every successful login, regardless of credential method: resolve permissions, publish the event, issue our own tokens. */
+  private async completeLogin(user: { id: string; organizationId: string; email: string; fullName: string }): Promise<AuthResponse> {
     const permissions = await this.roles.permissionsForUser(user.id);
     const authenticatedUser: AuthenticatedUser = {
       id: user.id,

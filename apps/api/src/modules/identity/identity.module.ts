@@ -9,12 +9,13 @@ import { TeamsController } from "./teams/teams.controller";
 import { AuthService } from "./auth/auth.service";
 import { AuthController } from "./auth/auth.controller";
 import { PasswordService } from "./auth/password.service";
+import { OidcService } from "./auth/oidc.service";
 import { AuditService } from "./audit/audit.service";
 import { AuditController } from "./audit/audit.controller";
 
 @Module({
   controllers: [AuthController, UsersController, RolesController, TeamsController, AuditController],
-  providers: [OrganizationsService, UsersService, RolesService, TeamsService, AuthService, PasswordService, AuditService],
+  providers: [OrganizationsService, UsersService, RolesService, TeamsService, AuthService, PasswordService, OidcService, AuditService],
   exports: [RolesService, UsersService, OrganizationsService],
 })
 export class IdentityModule {}

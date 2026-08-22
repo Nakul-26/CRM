@@ -72,23 +72,57 @@ pushes a lightweight signal whenever a new audit row matching the current
 filters is written; the dashboard shows a "New audit events — Refresh"
 banner while viewing the newest page, instead of requiring a manual reload.
 
-**Phase 13 (current):** Payment Processing — the "no payment
+**Phase 13:** Payment Processing — the "no payment
 processing" item Phase 7 deliberately deferred. A new, pluggable
 `PaymentProvider` (a real Stripe Checkout adapter plus a deterministic mock
 used by default, `PAYMENT_PROVIDER=mock|stripe`, fully testable with no
 external account) powers a new `POST /payments/checkout` for paying to
 renew a subscription — the existing free "extend the period" renewal stays
-available alongside it. See
+available alongside it.
+
+**Phase 14:** RabbitMQ — the first of the five originally-deferred
+infrastructure items (RabbitMQ, Keycloak, Temporal, OpenSearch,
+microservices split), picked up on request. Scoped to one concrete need:
+`AuditListener`'s DB write previously had no retry — a failed insert was
+silently lost. A new `EVENT_BUS_TRANSPORT=in-process|rabbitmq` env var
+(default `in-process`, every other listener untouched) routes audit writes
+through a durable queue with a dead-letter queue instead, when enabled. See
 [docs/architecture/overview.md](docs/architecture/overview.md) for the full
 picture and
-[docs/architecture/overview.md#phase-13-scope](docs/architecture/overview.md#phase-13-scope)
+[docs/architecture/overview.md#phase-14-scope](docs/architecture/overview.md#phase-14-scope)
+for exactly what's built vs. deferred.
+
+**Phase 15:** OpenSearch — the second of the five
+originally-deferred infrastructure items. A real, pluggable
+`SearchProvider` (a genuine OpenSearch-backed adapter with fuzzy
+multi-field matching plus the existing Postgres `ts_rank`/`pg_trgm` search
+kept as-is, `SEARCH_PROVIDER=postgres|opensearch`, default `postgres` since
+Postgres search hasn't actually hit its documented scaling trigger yet) can
+power `GET /search`. A new `SearchIndexListener` keeps the OpenSearch index
+in sync off the existing domain event bus, with automatic fallback to
+Postgres if OpenSearch fails. See
+[docs/architecture/overview.md#phase-15-scope](docs/architecture/overview.md#phase-15-scope)
+for exactly what's built vs. deferred.
+
+**Phase 16 (current):** Temporal — the third of the five
+originally-deferred infrastructure items. A real, pluggable
+`DunningOrchestrator` (`WORKFLOW_ENGINE=in-process|temporal`, default
+`in-process`) retries a failed subscription renewal charge up to 3 times
+with day-scale backoff, then cancels the subscription if every retry
+fails — closing a real gap where a failed charge previously produced one
+email and then silence. The default backend polls a Postgres job table on
+a cron, mirroring the existing renewal-reminder job's shape; the opt-in
+Temporal backend runs the same schedule as a real, durable workflow. See
+[docs/architecture/overview.md#phase-16-scope](docs/architecture/overview.md#phase-16-scope)
 for exactly what's built vs. deferred.
 
 ## Prerequisites
 
 - Node.js >= 20
 - pnpm >= 9 (`corepack enable` gives you this automatically)
-- Docker Desktop (for Postgres/Redis/Mailpit)
+- Docker Desktop (for Postgres/Redis/Mailpit; RabbitMQ, OpenSearch, and
+  Temporal are optional — only needed if you set `EVENT_BUS_TRANSPORT=
+  rabbitmq`, `SEARCH_PROVIDER=opensearch`, or `WORKFLOW_ENGINE=temporal`)
 
 ## Getting started
 
@@ -100,7 +134,7 @@ cp apps/web/.env.example apps/web/.env
 # Then edit apps/api/.env and set real JWT_ACCESS_SECRET / JWT_REFRESH_SECRET:
 #   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
-docker compose up -d          # Postgres, Redis, Mailpit
+docker compose up -d          # Postgres, Redis, Mailpit (+ RabbitMQ, OpenSearch, Temporal, optional)
 pnpm --filter @sales-platform/api db:migrate
 
 pnpm dev                      # builds shared packages, then starts api + web
@@ -139,7 +173,27 @@ docs/
   decisions/      ADRs
 ```
 
-## Why not [RabbitMQ / Keycloak / Temporal / OpenSearch / microservices]?
+## Why not [Keycloak / microservices]?
 
 Deliberately deferred for now — see the ADR linked above for the reasoning
 and the concrete trigger for adding each one back.
+
+RabbitMQ is partially adopted as of Phase 14: the audit pipeline can run
+through a durable queue (`EVENT_BUS_TRANSPORT=rabbitmq`), but every other
+listener still uses the in-process event bus, and that stays the default.
+General adoption is deferred for the same reason as before — see
+[ADR 0014](docs/decisions/0014-rabbitmq-audit-transport-phase14-scope.md).
+
+OpenSearch is fully built as of Phase 15 — a real, working
+`SEARCH_PROVIDER=opensearch` adapter with feature parity to the default
+Postgres search — but Postgres remains the default, since the documented
+trigger (search volume outgrowing Postgres) hasn't actually fired. See
+[ADR 0015](docs/decisions/0015-opensearch-phase15-scope.md).
+
+Temporal is adopted as of Phase 16 for one concrete workflow — subscription
+payment dunning (`WORKFLOW_ENGINE=temporal`) — but the default
+`in-process` (Postgres cron) backend implements the identical retry
+schedule with no new infrastructure, and the renewal-reminder job stays on
+its own simple cron job as ADR 0007 already established. General adoption
+for other multi-step processes is deferred until one has a concrete need —
+see [ADR 0016](docs/decisions/0016-temporal-dunning-phase16-scope.md).

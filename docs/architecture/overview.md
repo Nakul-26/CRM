@@ -40,7 +40,16 @@ for the Phase 12 (Audit Log Real-Time Streaming) implementation plan, and
 it deliberately left out. See [docs/plans/0013-phase13-payment-processing-plan.md](../plans/0013-phase13-payment-processing-plan.md)
 for the Phase 13 (Payment Processing) implementation plan, and
 [ADR 0013](../decisions/0013-payment-processing-phase13-scope.md) for what
-it deliberately left out.
+it deliberately left out. See [docs/plans/0014-phase14-rabbitmq-plan.md](../plans/0014-phase14-rabbitmq-plan.md)
+for the Phase 14 (RabbitMQ) implementation plan, and
+[ADR 0014](../decisions/0014-rabbitmq-audit-transport-phase14-scope.md) for
+what it deliberately left out. See [docs/plans/0015-phase15-opensearch-plan.md](../plans/0015-phase15-opensearch-plan.md)
+for the Phase 15 (OpenSearch) implementation plan, and
+[ADR 0015](../decisions/0015-opensearch-phase15-scope.md) for what it
+deliberately left out. See [docs/plans/0016-phase16-temporal-plan.md](../plans/0016-phase16-temporal-plan.md)
+for the Phase 16 (Temporal) implementation plan, and
+[ADR 0016](../decisions/0016-temporal-dunning-phase16-scope.md) for what it
+deliberately left out.
 
 ## System shape
 
@@ -174,10 +183,10 @@ see [ADR 0012](../decisions/0012-audit-log-streaming-phase12-scope.md).
 
 | Deferred            | Add it when...                                            |
 |----------------------|-----------------------------------------------------------|
-| RabbitMQ              | A module is actually split into its own deployed service. |
+| RabbitMQ, general adoption (every listener, not just audit) | A module is actually split into its own deployed service — see [ADR 0014](../decisions/0014-rabbitmq-audit-transport-phase14-scope.md): Phase 14 wired RabbitMQ into the audit pipeline specifically (a concrete durability need), Mail/Notifications/QuoteAccepted remain in-process/best-effort until they have one too. |
 | Keycloak / OIDC        | External SSO customers are a real, committed requirement.  |
-| Temporal               | A workflow needs durable multi-day orchestration with retries beyond what a scheduled job table covers. Phase 7's renewal reminders confirmed a Postgres job table + `@nestjs/schedule` is still enough — see [ADR 0007](../decisions/0007-subscriptions-phase7-scope.md). |
-| OpenSearch             | Postgres full-text search stops being fast enough at real data volume. |
+| Temporal, general adoption (every multi-step process, not just dunning) | A workflow needs durable multi-day orchestration with retries beyond what a scheduled job table covers. Phase 7's renewal reminders confirmed a Postgres job table + `@nestjs/schedule` is still enough for that single-step job — see [ADR 0007](../decisions/0007-subscriptions-phase7-scope.md). Phase 16 built a real Temporal-backed dunning workflow for failed subscription payments specifically (a concrete multi-attempt/backoff need) — see [ADR 0016](../decisions/0016-temporal-dunning-phase16-scope.md) — but `WORKFLOW_ENGINE=in-process` remains the default. |
+| OpenSearch, adoption by default | Postgres full-text search stops being fast enough at real data volume — see [ADR 0015](../decisions/0015-opensearch-phase15-scope.md): Phase 15 built a real, pluggable OpenSearch-backed search provider with feature parity, but `SEARCH_PROVIDER=postgres` remains the default since that trigger has not fired. |
 | Separate databases per module | A module needs independent scaling/ownership by a separate team. |
 | Notification delivery preferences/settings, email digests of notifications | A concrete need for per-user delivery control shows up — Phase 9 built the in-app bell/unread-state center itself, see [ADR 0009](../decisions/0009-notifications-phase9-scope.md). |
 
@@ -516,3 +525,83 @@ type-checking; its webhook signature verification, by contrast, is a real,
 locally-signed test (`stripe.webhooks.generateTestHeaderString`/
 `constructEvent` are pure local HMAC operations, no network), exercised
 both as a unit test and end-to-end in `payments.e2e-spec.ts`.
+
+## Phase 14 scope
+
+RabbitMQ — the first of the five originally-deferred infrastructure items
+picked up on request (RabbitMQ, Keycloak, Temporal, OpenSearch,
+microservices split — see [ADR 0001](../decisions/0001-modular-monolith.md)),
+in the order that lets each build on the last (see
+[ADR 0014](../decisions/0014-rabbitmq-audit-transport-phase14-scope.md) for
+the full reasoning). Scoped to exactly one concrete need: the audit
+pipeline's silent-drop gap. `AuditListener`'s DB insert previously had no
+retry — a failure was caught, logged, and gone for good. A new
+`EVENT_BUS_TRANSPORT=in-process|rabbitmq` env var (default `in-process`,
+same shape as `PAYMENT_PROVIDER=mock|stripe`) leaves every other listener
+(`MailListener`, `NotificationsListener`, `QuoteAcceptedListener`) and
+`DomainEventBus` itself completely untouched; when set to `rabbitmq`,
+`AuditListener` publishes to a durable topic exchange (`domain.events`,
+routing key = the event's `eventType`) via a confirm channel, and a queue
+consumer (`audit.log.consumer`, bound with the catch-all routing key `#`,
+dead-lettered to `audit.log.consumer.dlq` on failure) performs the actual
+write. If the broker publish isn't confirmed for any reason, `AuditListener`
+falls straight through to the pre-existing direct write — the broker can
+only add a durability path, never regress. `docker-compose.yml` gained a
+`rabbitmq` service (`rabbitmq:3-management-alpine`, ports shifted to
+5673/15673 like the other local services). Migrating Mail, Notifications,
+or QuoteAccepted onto the broker is an open deferral for whenever one of
+them has a concrete durability need of its own — none does today, so none
+moved.
+
+## Phase 15 scope
+
+OpenSearch — the second of the five originally-deferred infrastructure
+items (see [ADR 0015](../decisions/0015-opensearch-phase15-scope.md) for
+the full reasoning). Built as a real, fully-working pluggable alternative to
+the existing Postgres search, not a demo stub — but Postgres stays the
+default, since the documented trigger to switch (search volume outgrowing
+Postgres) hasn't fired. A new `SEARCH_PROVIDER=postgres|opensearch` env var
+(default `postgres`, same shape as `PAYMENT_PROVIDER`/
+`EVENT_BUS_TRANSPORT`) selects between `PostgresSearchProvider` (the
+pre-existing `ts_rank`/`pg_trgm` blend, moved verbatim into the new
+provider interface) and `OpenSearchSearchProvider` (BM25 `multi_match` with
+fuzzy matching, filtered by `organizationId` and entity type). A new
+`SearchIndexListener`, a wildcard `@OnEvent("domain.event")` subscriber
+active only when `SEARCH_PROVIDER=opensearch`, keeps the `crm-search` index
+in sync on every account/contact/lead create/update/delete by re-reading
+the current row and upserting or deleting its document — no new publish
+call sites needed. `SearchService` falls back to `PostgresSearchProvider`
+for any request if the active provider throws, since search is a pure read
+path and Postgres is always live authoritative data. `docker-compose.yml`
+gained an `opensearch` service
+(`opensearchproject/opensearch:2`, single-node, security disabled, heap
+capped, port shifted to 9201). A standalone `pnpm search:reindex` script
+backfills the index from an existing populated database — a required
+one-time step when first switching the flag on, the same way `db:migrate`
+already is. Expanding search to opportunities/quotes/tickets/products, the
+topbar global-search UI, and OpenSearch security hardening remain open
+deferrals.
+
+## Phase 16 scope
+
+Temporal — the third of the five originally-deferred infrastructure items
+(see [ADR 0016](../decisions/0016-temporal-dunning-phase16-scope.md) for the
+full reasoning). Scoped to one concrete need: a failed subscription renewal
+charge previously produced one email and then silence — no retry, no grace
+period, no path toward cancellation. A new `WORKFLOW_ENGINE=in-process|
+temporal` env var (default `in-process`) selects between
+`PostgresDunningOrchestrator` (a cron-polled job table, mirroring
+`RenewalsScheduler`'s shape) and `TemporalDunningOrchestrator` (a real
+`dunningWorkflow` that sleeps, retries, and cancels on exhaustion) — both
+new, both implementing the identical business schedule (3 retries, 1/3/7-day
+backoff). `DunningListener`, triggered off the existing `payment.failed`/
+`payment.succeeded` events, decides whether to start or continue a cycle by
+asking whichever orchestrator is active for its own state (a Postgres row,
+or the Temporal workflow's own execution status) — a correction made after
+an early version checked a shared table that the Temporal backend never
+wrote to, which caused a duplicate-workflow-start error caught by the e2e
+suite's exhaustion test. `docker-compose.yml` gained `temporal`
+(`temporalio/auto-setup:1.24`, sharing the existing Postgres container) and
+`temporal-ui` services. Migrating the renewal-reminder cron itself onto
+Temporal remains out of scope — ADR 0007's reasoning that it's a
+single-step job still holds.

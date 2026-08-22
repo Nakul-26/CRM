@@ -21,6 +21,22 @@ process.env.CORS_ORIGIN ??= "http://localhost:3000";
 // still be exercised in e2e tests regardless of which provider is active
 // for checkout creation.
 process.env.STRIPE_WEBHOOK_SECRET ??= "whsec_test_secret_for_e2e_signature_verification";
+// Left at its "in-process" default for every spec except rabbitmq-audit.e2e-spec.ts,
+// which sets EVENT_BUS_TRANSPORT=rabbitmq (and RABBITMQ_URL) before importing this
+// file — ??= means that override wins there and every other spec is unaffected.
+process.env.EVENT_BUS_TRANSPORT ??= "in-process";
+// Same idiom: left at its "postgres" default for every spec except
+// search-opensearch.e2e-spec.ts, which sets SEARCH_PROVIDER=opensearch (and
+// OPENSEARCH_URL) before importing this file.
+process.env.SEARCH_PROVIDER ??= "postgres";
+// Same idiom: left at its "in-process" default for every spec except
+// dunning-temporal.e2e-spec.ts, which sets WORKFLOW_ENGINE=temporal (and
+// TEMPORAL_ADDRESS/DUNNING_RETRY_DELAYS_MS) before importing this file.
+process.env.WORKFLOW_ENGINE ??= "in-process";
+// Same idiom: left disabled for every spec except oidc-login.e2e-spec.ts,
+// which sets AUTH_OIDC_ENABLED=true (and OIDC_ISSUER_URL/OIDC_CLIENT_ID/
+// OIDC_CLIENT_SECRET) before importing this file.
+process.env.AUTH_OIDC_ENABLED ??= "false";
 
 let prepared = false;
 
