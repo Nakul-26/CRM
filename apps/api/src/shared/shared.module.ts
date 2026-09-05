@@ -25,6 +25,12 @@ import { GlobalExceptionFilter } from "./filters/http-exception.filter";
     { provide: APP_GUARD, useClass: PermissionsGuard },
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
   ],
-  exports: [RequestContextService, DomainEventBus],
+  // MailerService is exported starting Phase 19: NotificationsService is the
+  // first consumer outside this module (immediate/digest delivery of
+  // notification emails) — see
+  // docs/decisions/0019-notification-preferences-phase19-scope.md. Every
+  // prior email path (MailListener) lived inside this module, so exporting
+  // it was never needed before.
+  exports: [RequestContextService, DomainEventBus, MailerService],
 })
 export class SharedModule {}

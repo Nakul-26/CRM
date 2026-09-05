@@ -1,7 +1,9 @@
-import { Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Put, Query, UsePipes } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
-import type { AuthenticatedUser } from "@sales-platform/contracts";
+import type { AuthenticatedUser, UpdateNotificationPreferencesInput } from "@sales-platform/contracts";
+import { updateNotificationPreferencesSchema } from "@sales-platform/contracts";
 import { CurrentUser } from "../../shared/decorators/current-user.decorator";
+import { ZodValidationPipe } from "../../shared/pipes/zod-validation.pipe";
 import { NotificationsService } from "./notifications.service";
 
 /**
@@ -36,5 +38,17 @@ export class NotificationsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   markAllRead(@CurrentUser() user: AuthenticatedUser) {
     return this.notifications.markAllRead(user.organizationId, user.id);
+  }
+
+  @Get("preferences")
+  getPreferences(@CurrentUser() user: AuthenticatedUser) {
+    return this.notifications.getPreferences(user.organizationId, user.id);
+  }
+
+  @Put("preferences")
+  @UsePipes(new ZodValidationPipe(updateNotificationPreferencesSchema))
+  async setPreferences(@CurrentUser() user: AuthenticatedUser, @Body() body: UpdateNotificationPreferencesInput) {
+    await this.notifications.setPreferences(user.organizationId, user.id, body);
+    return { emailDelivery: body.emailDelivery };
   }
 }

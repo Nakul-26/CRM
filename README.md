@@ -128,7 +128,7 @@ default. See
 [docs/architecture/overview.md#phase-17-scope](docs/architecture/overview.md#phase-17-scope)
 for exactly what's built vs. deferred.
 
-**Phase 18 (current):** Microservices split — the last of the
+**Phase 18:** Microservices split — the last of the
 five originally-deferred infrastructure items. Extracts the `notifications`
 module into a separately-deployable NestJS app
 (`apps/notifications-service`, opt-in via `NOTIFICATIONS_SERVICE_ENABLED`,
@@ -139,6 +139,16 @@ is off, `apps/api` behaves exactly as before; when it's on, the monolith
 drops its own `NotificationsModule` entirely and `apps/web`'s gateway
 routes `/notifications/*` to the new service instead. See
 [docs/architecture/overview.md#phase-18-scope](docs/architecture/overview.md#phase-18-scope)
+for exactly what's built vs. deferred.
+
+**Phase 19 (current):** Notification preferences + email digest — chosen
+by the user once all five originally-deferred infrastructure items were
+done. A per-user `emailDelivery` preference (`off` (default) / `immediate`
+/ `daily_digest`) adds an opt-in email channel on top of the existing 7
+in-app notification types from Phase 9 — in-app notifications themselves
+are unaffected either way. Reachable from a "Notification settings" link
+in the topbar. See
+[docs/architecture/overview.md#phase-19-scope](docs/architecture/overview.md#phase-19-scope)
 for exactly what's built vs. deferred.
 
 ## Prerequisites

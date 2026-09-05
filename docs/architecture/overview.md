@@ -55,7 +55,10 @@ for the Phase 17 (Keycloak) implementation plan, and
 deliberately left out. See [docs/plans/0018-phase18-microservices-split-plan.md](../plans/0018-phase18-microservices-split-plan.md)
 for the Phase 18 (microservices split) implementation plan, and
 [ADR 0018](../decisions/0018-microservices-split-phase18-scope.md) for what
-it deliberately left out.
+it deliberately left out. See [docs/plans/0019-phase19-notification-preferences-plan.md](../plans/0019-phase19-notification-preferences-plan.md)
+for the Phase 19 (notification preferences + email digest) implementation
+plan, and [ADR 0019](../decisions/0019-notification-preferences-phase19-scope.md)
+for what it deliberately left out.
 
 ## System shape
 
@@ -209,7 +212,8 @@ see [ADR 0012](../decisions/0012-audit-log-streaming-phase12-scope.md).
 | Temporal, general adoption (every multi-step process, not just dunning) | A workflow needs durable multi-day orchestration with retries beyond what a scheduled job table covers. Phase 7's renewal reminders confirmed a Postgres job table + `@nestjs/schedule` is still enough for that single-step job — see [ADR 0007](../decisions/0007-subscriptions-phase7-scope.md). Phase 16 built a real Temporal-backed dunning workflow for failed subscription payments specifically (a concrete multi-attempt/backoff need) — see [ADR 0016](../decisions/0016-temporal-dunning-phase16-scope.md) — but `WORKFLOW_ENGINE=in-process` remains the default. |
 | OpenSearch, adoption by default | Postgres full-text search stops being fast enough at real data volume — see [ADR 0015](../decisions/0015-opensearch-phase15-scope.md): Phase 15 built a real, pluggable OpenSearch-backed search provider with feature parity, but `SEARCH_PROVIDER=postgres` remains the default since that trigger has not fired. |
 | Separate databases per module, for the remaining nine modules | A module needs independent scaling/ownership by a separate team. Phase 18 extracted `notifications` as a first, real proof of the pattern (own database, RabbitMQ-mediated decoupling, its own deployable process) — see [ADR 0018](../decisions/0018-microservices-split-phase18-scope.md) — but it's opt-in (`NOTIFICATIONS_SERVICE_ENABLED=false` by default) and no other module has a concrete need yet. |
-| Notification delivery preferences/settings, email digests of notifications | A concrete need for per-user delivery control shows up — Phase 9 built the in-app bell/unread-state center itself, see [ADR 0009](../decisions/0009-notifications-phase9-scope.md). |
+| Notification delivery preferences/settings, email digests of notifications | Resolved in Phase 19 — see [ADR 0019](../decisions/0019-notification-preferences-phase19-scope.md). Phase 9 built the in-app bell/unread-state center itself, see [ADR 0009](../decisions/0009-notifications-phase9-scope.md). |
+| A global "notify on every event" firehose (every domain event creating a notification, not just the 7 curated ones) | A concrete need shows up — explicitly named and left deferred by both ADR 0009 and [ADR 0019](../decisions/0019-notification-preferences-phase19-scope.md), which added delivery preferences/digest for the existing 7 without expanding which events create a notification. |
 
 ## Phase 1 scope
 
@@ -692,3 +696,33 @@ of ten schema-owning modules has actually been extracted — the *pattern*
 is proven, not "the split is finished." Extracting audit-log, the Temporal
 worker, or any other module remains gated on a concrete independent-
 scaling/ownership need, per ADR 0001's own stated trigger.
+
+## Phase 19 scope
+
+Notification preferences + email digest — chosen by the user from three
+candidate deferred features once all five of ADR 0001's originally-deferred
+infrastructure items were done (see
+[ADR 0019](../decisions/0019-notification-preferences-phase19-scope.md) for
+the full reasoning). Resolves the "delivery preferences/settings, an email
+digest of notifications" item [ADR 0009](../decisions/0009-notifications-phase9-scope.md)
+decision #8 deferred — the "global notify on every event firehose" idea
+that same decision named stays deferred, unaddressed here. A single global
+`emailDelivery: "off" | "immediate" | "daily_digest"` preference per user
+(defaulting to `"off"`, byte-for-byte today's behavior) gates only an
+*additional* email channel for the same 7 curated notification event types
+Phase 9 already shows in-app — in-app notifications themselves are never
+gated by it. `NotificationsService.create()` sends an immediate email when
+set to `"immediate"`; a new `NotificationDigestService`/
+`NotificationDigestScheduler` (`@Cron("0 8 * * *")`, same fixed-cadence
+shape as `RenewalsScheduler`) batches everything for `"daily_digest"` users
+into one email a day, marking each notification's new `digestSentAt`
+column so it's never included twice. Both paths are best-effort — a mail
+failure is logged and swallowed, never breaks notification creation or the
+rest of a digest batch, the same posture `MailListener`/`AuditListener`
+already established. `MailerService` is exported from `SharedModule` for
+the first time (previously only used inside it). Deliberately not ported to
+`apps/notifications-service` (Phase 18's opt-in microservices split) —
+that service isn't held to feature parity with the in-process module. The
+new `/settings/notifications` page is reachable from a link in
+`AppTopbar`, not `NAV_SECTIONS` — that array mirrors the brief's fixed
+information architecture, which this user-scoped setting isn't part of.
