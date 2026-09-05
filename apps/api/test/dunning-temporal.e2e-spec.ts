@@ -14,10 +14,19 @@ import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { createTestApp } from "./setup/test-app";
 
-// Temporal's worker bootstrap (webpack-bundling the workflow) and its own
-// JVM-free but still non-trivial cold-start is slower than RabbitMQ/
-// OpenSearch's — give this file's tests more headroom than Jest's default.
-jest.setTimeout(60000);
+// Temporal's worker bootstrap now webpack-bundles the workflow in a real,
+// separate `node` subprocess rather than in-process (see
+// TemporalWorkerService.bundleWorkflowCode and
+// docs/decisions/0016-temporal-dunning-phase16-scope.md's addendum — running
+// webpack inside Jest's own module registry was reproducibly fragile).
+// That's correct but slower end-to-end than in-process bundling would be
+// (measured 127-260s wall time for bundle + NativeConnection.connect,
+// varying with machine load). On top of that, the "cancels" test below polls
+// waitForNextAttempt up to 3 times plus one waitForSubscriptionStatus call,
+// each budgeted up to 60s under contention — a real worst-case sum well
+// past Jest's default. Generous rather than tightly tuned, on purpose: this
+// file exercises real Temporal server round trips, not fixed-latency mocks.
+jest.setTimeout(300000);
 
 function uniqueEmail(label: string) {
   return `${label}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
@@ -78,7 +87,16 @@ async function completeMock(app: INestApplication, paymentId: string) {
  * workflow's sleep) — poll payment history for a new pending payment id
  * that isn't one we've already seen.
  */
-async function waitForNextAttempt(app: INestApplication, token: string, subscriptionId: string, seenPaymentIds: Set<string>, timeoutMs = 20000): Promise<string> {
+// 60s, not the DUNNING_RETRY_DELAYS_MS-implied ~2s: real Temporal
+// server round trips (workflow start, activity dispatch, timer fire) have a
+// margin that varies with this machine's load rather than a fixed "cold vs
+// warm worker" split — observed both a first-workflow call miss a 20s
+// budget and, in a separate run, a later-workflow call miss a 35s budget
+// while its sibling test passed comfortably. Not a workflow-logic bug
+// (DUNNING_RETRY_DELAYS_MS is still only 2s per step) — a genuine, variable
+// resource-contention margin on real infra, budgeted generously rather than
+// chased to an exact number.
+async function waitForNextAttempt(app: INestApplication, token: string, subscriptionId: string, seenPaymentIds: Set<string>, timeoutMs = 60000): Promise<string> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const res = await request(app.getHttpServer())
@@ -92,7 +110,8 @@ async function waitForNextAttempt(app: INestApplication, token: string, subscrip
   throw new Error(`Timed out after ${timeoutMs}ms waiting for the next dunning retry attempt on subscription ${subscriptionId}`);
 }
 
-async function waitForSubscriptionStatus(app: INestApplication, token: string, subscriptionId: string, status: string, timeoutMs = 20000): Promise<void> {
+// Same generous, variable-load-tolerant budget as waitForNextAttempt above.
+async function waitForSubscriptionStatus(app: INestApplication, token: string, subscriptionId: string, status: string, timeoutMs = 60000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const res = await request(app.getHttpServer()).get(`/api/v1/subscriptions/${subscriptionId}`).set("Authorization", `Bearer ${token}`).expect(200);

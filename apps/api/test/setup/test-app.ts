@@ -37,6 +37,11 @@ process.env.WORKFLOW_ENGINE ??= "in-process";
 // which sets AUTH_OIDC_ENABLED=true (and OIDC_ISSUER_URL/OIDC_CLIENT_ID/
 // OIDC_CLIENT_SECRET) before importing this file.
 process.env.AUTH_OIDC_ENABLED ??= "false";
+// Same idiom: left disabled for every spec except
+// notifications-service-split.e2e-spec.ts, which sets
+// NOTIFICATIONS_SERVICE_ENABLED=true (and EVENT_BUS_TRANSPORT=rabbitmq)
+// before importing this file.
+process.env.NOTIFICATIONS_SERVICE_ENABLED ??= "false";
 
 let prepared = false;
 

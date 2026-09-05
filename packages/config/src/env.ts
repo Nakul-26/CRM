@@ -1,5 +1,25 @@
 import { z } from "zod";
 
+/**
+ * `z.coerce.boolean()` does a raw `Boolean(value)` coercion — so the
+ * *string* "false" (non-empty) parses to `true`, the opposite of what an
+ * env-var reader needs. Discovered when NOTIFICATIONS_SERVICE_ENABLED's
+ * boot-time validation (Phase 18) started throwing on every e2e spec: every
+ * test file sets it via `process.env.NOTIFICATIONS_SERVICE_ENABLED ??=
+ * "false"`, and that literal string "false" was being coerced straight to
+ * `true`. AUTH_OIDC_ENABLED/NEXT_PUBLIC_OIDC_ENABLED had the identical
+ * latent bug since Phase 17 — harmless there only because nothing else ever
+ * asserted on either being `false`. This helper treats only the literal
+ * string "true" (or a real boolean `true`) as true.
+ */
+function booleanFlag(defaultValue: boolean) {
+  return z.preprocess((value) => {
+    if (value === undefined) return defaultValue;
+    if (typeof value === "string") return value === "true";
+    return value;
+  }, z.boolean());
+}
+
 export const apiEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
@@ -50,16 +70,55 @@ export const apiEnvSchema = z.object({
   // already-provisioned local user (matched by verified email) can also
   // obtain a token pair via a Keycloak/OIDC login — see
   // docs/decisions/0017-keycloak-oidc-phase17-scope.md.
-  AUTH_OIDC_ENABLED: z.coerce.boolean().default(false),
+  AUTH_OIDC_ENABLED: booleanFlag(false),
   OIDC_ISSUER_URL: z.string().optional(),
   OIDC_CLIENT_ID: z.string().optional(),
   OIDC_CLIENT_SECRET: z.string().optional(),
+
+  // Additive, not a swap: when false (default) apps/api's own
+  // NotificationsModule keeps serving /notifications exactly as before, in
+  // process, and none of the below matters. When true, apps/api drops its
+  // own NotificationsModule entirely and a separately-deployed
+  // apps/notifications-service becomes the sole owner of notification
+  // storage and the /notifications API, fed via the domain.events RabbitMQ
+  // exchange (which requires EVENT_BUS_TRANSPORT=rabbitmq — validated at
+  // boot). See docs/decisions/0018-microservices-split-phase18-scope.md.
+  NOTIFICATIONS_SERVICE_ENABLED: booleanFlag(false),
 });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;
 
 export function loadApiEnv(source: NodeJS.ProcessEnv = process.env): ApiEnv {
   const parsed = apiEnvSchema.safeParse(source);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`)
+      .join("\n");
+    throw new Error(`Invalid environment configuration:\n${issues}`);
+  }
+  return parsed.data;
+}
+
+/**
+ * Env for the extracted apps/notifications-service app (Phase 18). A
+ * separate schema, not folded into apiEnvSchema, because this process only
+ * ever runs at all when the split is turned on — every field here is
+ * required, unlike apiEnvSchema's opt-in fields which stay optional because
+ * apps/api runs fine without them.
+ */
+export const notificationsServiceEnvSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  PORT: z.coerce.number().int().positive().default(4002),
+  DATABASE_URL: z.string().url(),
+  RABBITMQ_URL: z.string(),
+  JWT_ACCESS_SECRET: z.string().min(32, "JWT_ACCESS_SECRET must be at least 32 characters"),
+  CORS_ORIGIN: z.string().default("http://localhost:3000"),
+});
+
+export type NotificationsServiceEnv = z.infer<typeof notificationsServiceEnvSchema>;
+
+export function loadNotificationsServiceEnv(source: NodeJS.ProcessEnv = process.env): NotificationsServiceEnv {
+  const parsed = notificationsServiceEnvSchema.safeParse(source);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`)
@@ -78,7 +137,7 @@ export const webEnvSchema = z.object({
   // OIDC_ISSUER_URL/OIDC_CLIENT_ID/OIDC_REDIRECT_URI, which are
   // deliberately NOT NEXT_PUBLIC_ — same "server-only" posture as
   // API_INTERNAL_URL).
-  NEXT_PUBLIC_OIDC_ENABLED: z.coerce.boolean().default(false),
+  NEXT_PUBLIC_OIDC_ENABLED: booleanFlag(false),
 });
 
 export type WebEnv = z.infer<typeof webEnvSchema>;

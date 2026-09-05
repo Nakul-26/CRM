@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — 2026-08-22
+Accepted — 2026-08-22 (addendum 2026-09-03, decision 13)
 
 ## Context
 
@@ -155,6 +155,55 @@ carried as a source of CI flakiness. The full existing unit (129/129) and
 e2e suites were re-run under the default `WORKFLOW_ENGINE=in-process` and
 stayed green with zero regressions.
 
+**13. Addendum (2026-09-03) — workflow bundling moved to a real, separate
+`node` subprocess**, fixing a regression discovered while re-verifying the
+full e2e suite for Phase 17: `Worker.create({ workflowsPath })` (decision 9's
+original approach) bundles the workflow via an **in-process** webpack
+compile, and running webpack's own dynamic `require()` calls (loader
+loading, `HarmonyImportGuard`'s memoized circular require) *inside Jest's
+own CommonJS module registry* turned out to be fragile — reproduced with
+three different symptoms across separate runs
+(`NormalModuleReplacementPlugin is not a constructor`; `source-map-loader
+... is not a loader`; `getHarmonyImportGuard(...).attachDependencyGuards is
+not a function`), all downstream noise from the same root cause, confirmed
+by running the identical `bundleWorkflowCode` call standalone in a plain
+`node` process: it completed cleanly every time (~25s webpack compile),
+while the in-Jest call either threw one of the above or exceeded the hook
+timeout outright. Fixed by extracting the bundle step into
+`workflows/bundle-in-subprocess.js` — deliberately plain JS, not `.ts`, so
+it never needs a `ts-node`/`ts-jest` transpile hook to run (measured ~3x
+slower in practice, since those hooks patch Node's module-loading pipeline
+for every one of webpack's own internal `require()` calls) — spawned via
+`child_process.execFile` from `TemporalWorkerService.bundleWorkflowCode`,
+with the resulting bundle passed to `Worker.create({ workflowBundle: {
+code } })` instead of `workflowsPath`. `nest-cli.json`'s
+`compilerOptions.assets` copies the script into `dist/` verbatim on build,
+same as any other non-TS build asset. This is a real fix, not test-only:
+production workers now bundle the same way. Net effect: worker startup is
+slower end-to-end (real subprocess spawn + webpack compile, ~2 minutes
+observed) but no longer sporadically fails outright — `dunning-temporal.e2e-spec.ts`'s
+own timeouts were budgeted up accordingly (`jest.setTimeout(300000)`, 60s
+per retry-poll) since real Temporal server round trips also showed a
+genuine, variable resource-contention margin on top of the bundling time,
+not a workflow-logic bug.
+
+Verifying this fix's `dist/` output surfaced an unrelated, genuinely
+pre-existing bug (confirmed on the untouched, committed tree via `git
+stash`, before any Phase 16 or 17 change): `tsconfig.json` never set
+`rootDir`, so `tsc`'s automatic "common ancestor of all input files"
+inference included root-level `drizzle.config.ts` alongside `src/`,
+nesting every compiled file under `dist/src/...` instead of `dist/...` —
+meaning `pnpm start` (`node dist/main.js`) could never have worked, and
+`nest-cli.json`'s new `assets` copy (which assumes the standard
+`dist/<path>` layout, matching where the compiled `temporal-worker.service.js`
+actually needs to find its sibling asset) would have landed in the wrong
+directory. Fixed by adding `rootDir: "./src"` and excluding
+`drizzle.config.ts` (already only ever run directly via `tsx`/`drizzle-kit`,
+never from `dist/`) in `tsconfig.build.json` specifically — `tsconfig.json`
+itself is untouched, so `pnpm typecheck` still checks `drizzle.config.ts` as
+before. Verified: `dist/main.js` now exists and a real `node dist/main.js`
+boot reaches "Nest application successfully started."
+
 **12. Not built this phase**: migrating the renewal-reminder cron itself
 onto Temporal (ADR 0007's reasoning still holds — nothing changed about
 that job's single-step shape); a UI for dunning cycles beyond Temporal's
@@ -176,5 +225,10 @@ increment, recorded here rather than silently gapped.
 - Temporal is now running in the local/dev topology (`docker-compose.yml`)
   as a real prerequisite building block, alongside RabbitMQ, for the
   eventual microservices split (ADR 0001's "Consequences" section).
-- Keycloak and the microservices split remain the last two of the five
-  originally-deferred items.
+- Keycloak (Phase 17) is done; the microservices split remains the last of
+  the five originally-deferred items.
+- Decision 13's subprocess-bundling fix is a durable note for this
+  codebase: any future code that recursively invokes a bundler (webpack,
+  esbuild, etc.) from inside a Jest-run process should assume the same
+  module-registry fragility until proven otherwise, and default to a real
+  child process rather than an in-process call.

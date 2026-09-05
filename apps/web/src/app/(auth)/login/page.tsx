@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { loginSchema, type LoginInput } from "@sales-platform/contracts";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,11 +20,22 @@ export default function LoginPage() {
   );
 }
 
+const OIDC_ENABLED = process.env.NEXT_PUBLIC_OIDC_ENABLED === "true";
+
+const OIDC_ERROR_MESSAGES: Record<string, string> = {
+  oidc_denied: "SSO sign-in was cancelled.",
+  oidc_state_mismatch: "SSO sign-in expired — please try again.",
+  oidc_login_failed: "No account matches that SSO identity. Sign in with your password, or contact an admin.",
+};
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const login = useLogin();
-  const [serverError, setServerError] = useState<string | null>(null);
+  const oidcError = searchParams.get("error");
+  const [serverError, setServerError] = useState<string | null>(
+    oidcError ? (OIDC_ERROR_MESSAGES[oidcError] ?? "SSO sign-in failed.") : null,
+  );
 
   const {
     register,
@@ -66,6 +77,18 @@ function LoginForm() {
               {isSubmitting ? "Signing in..." : "Sign in"}
             </Button>
           </form>
+          {OIDC_ENABLED && (
+            <>
+              <div className="my-4 flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="h-px flex-1 bg-border" />
+                or
+                <span className="h-px flex-1 bg-border" />
+              </div>
+              <a href="/api/auth/oidc/start" className={buttonVariants({ variant: "outline", className: "w-full" })}>
+                Sign in with SSO
+              </a>
+            </>
+          )}
           <p className="mt-4 text-center text-sm text-muted-foreground">
             No organization yet?{" "}
             <a href="/register" className="font-medium text-foreground underline underline-offset-4">

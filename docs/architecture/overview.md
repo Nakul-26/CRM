@@ -49,7 +49,13 @@ for the Phase 15 (OpenSearch) implementation plan, and
 deliberately left out. See [docs/plans/0016-phase16-temporal-plan.md](../plans/0016-phase16-temporal-plan.md)
 for the Phase 16 (Temporal) implementation plan, and
 [ADR 0016](../decisions/0016-temporal-dunning-phase16-scope.md) for what it
-deliberately left out.
+deliberately left out. See [docs/plans/0017-phase17-keycloak-plan.md](../plans/0017-phase17-keycloak-plan.md)
+for the Phase 17 (Keycloak) implementation plan, and
+[ADR 0017](../decisions/0017-keycloak-oidc-phase17-scope.md) for what it
+deliberately left out. See [docs/plans/0018-phase18-microservices-split-plan.md](../plans/0018-phase18-microservices-split-plan.md)
+for the Phase 18 (microservices split) implementation plan, and
+[ADR 0018](../decisions/0018-microservices-split-phase18-scope.md) for what
+it deliberately left out.
 
 ## System shape
 
@@ -102,12 +108,27 @@ Every table carries: `id (uuid)`, `organization_id`, `created_at`,
 `updated_at`, `created_by`, `updated_by`, and `deleted_at` where soft delete
 applies — per Section 17 of the brief.
 
+As of Phase 18, `notifications` is the first module to actually leave this
+one-database arrangement: when `NOTIFICATIONS_SERVICE_ENABLED=true`, its
+schema lives in its own Postgres database (`sales_platform_notifications`),
+owned and migrated by a separate deployable app
+(`apps/notifications-service`), with `organizationId`/`userId` becoming
+plain unconstrained UUIDs rather than FKs — cross-database foreign keys
+don't exist in Postgres. This is opt-in and off by default; the other nine
+modules stay exactly as described above. See
+[ADR 0018](../decisions/0018-microservices-split-phase18-scope.md).
+
 ## Multi-tenancy & auth
 
 - JWT access token (short-lived) + rotating refresh token, issued by the
   identity module. No external IdP in Phase 1 (see ADR 0001) — the token
-  contract is designed so a later Keycloak/OIDC swap only touches the
-  identity module's issuing code, not every other module's guards.
+  contract was designed so a later Keycloak/OIDC addition would only touch
+  the identity module's issuing code, not every other module's guards, and
+  Phase 17 confirmed it: `AuthService.loginWithOidc` (opt-in,
+  `AUTH_OIDC_ENABLED`) reuses the exact same token-issuing tail as password
+  login, so `JwtAuthGuard`/`PermissionsGuard`/`RequestContextService` and
+  every `@RequirePermissions` call-site needed zero changes — see
+  [ADR 0017](../decisions/0017-keycloak-oidc-phase17-scope.md).
 - `organizationId`, `userId`, and permissions are **never** read from the
   request body/params. A `TenantContextMiddleware` resolves them from the
   verified JWT and attaches them to an async-local-storage-backed request
@@ -184,10 +205,10 @@ see [ADR 0012](../decisions/0012-audit-log-streaming-phase12-scope.md).
 | Deferred            | Add it when...                                            |
 |----------------------|-----------------------------------------------------------|
 | RabbitMQ, general adoption (every listener, not just audit) | A module is actually split into its own deployed service — see [ADR 0014](../decisions/0014-rabbitmq-audit-transport-phase14-scope.md): Phase 14 wired RabbitMQ into the audit pipeline specifically (a concrete durability need), Mail/Notifications/QuoteAccepted remain in-process/best-effort until they have one too. |
-| Keycloak / OIDC        | External SSO customers are a real, committed requirement.  |
+| Keycloak / OIDC, general adoption (sole/required auth, JIT provisioning, SSO-only orgs) | External SSO customers are a real, committed requirement beyond "an additional opt-in login path." Phase 17 built a real, opt-in Keycloak-backed OIDC login (`AUTH_OIDC_ENABLED`) for already-provisioned local users specifically — see [ADR 0017](../decisions/0017-keycloak-oidc-phase17-scope.md) — but password login remains the only *required* path, and `AUTH_OIDC_ENABLED=false` remains the default. |
 | Temporal, general adoption (every multi-step process, not just dunning) | A workflow needs durable multi-day orchestration with retries beyond what a scheduled job table covers. Phase 7's renewal reminders confirmed a Postgres job table + `@nestjs/schedule` is still enough for that single-step job — see [ADR 0007](../decisions/0007-subscriptions-phase7-scope.md). Phase 16 built a real Temporal-backed dunning workflow for failed subscription payments specifically (a concrete multi-attempt/backoff need) — see [ADR 0016](../decisions/0016-temporal-dunning-phase16-scope.md) — but `WORKFLOW_ENGINE=in-process` remains the default. |
 | OpenSearch, adoption by default | Postgres full-text search stops being fast enough at real data volume — see [ADR 0015](../decisions/0015-opensearch-phase15-scope.md): Phase 15 built a real, pluggable OpenSearch-backed search provider with feature parity, but `SEARCH_PROVIDER=postgres` remains the default since that trigger has not fired. |
-| Separate databases per module | A module needs independent scaling/ownership by a separate team. |
+| Separate databases per module, for the remaining nine modules | A module needs independent scaling/ownership by a separate team. Phase 18 extracted `notifications` as a first, real proof of the pattern (own database, RabbitMQ-mediated decoupling, its own deployable process) — see [ADR 0018](../decisions/0018-microservices-split-phase18-scope.md) — but it's opt-in (`NOTIFICATIONS_SERVICE_ENABLED=false` by default) and no other module has a concrete need yet. |
 | Notification delivery preferences/settings, email digests of notifications | A concrete need for per-user delivery control shows up — Phase 9 built the in-app bell/unread-state center itself, see [ADR 0009](../decisions/0009-notifications-phase9-scope.md). |
 
 ## Phase 1 scope
@@ -605,3 +626,69 @@ suite's exhaustion test. `docker-compose.yml` gained `temporal`
 `temporal-ui` services. Migrating the renewal-reminder cron itself onto
 Temporal remains out of scope — ADR 0007's reasoning that it's a
 single-step job still holds.
+
+## Phase 17 scope
+
+Keycloak — the fourth of the five originally-deferred infrastructure items
+(see [ADR 0017](../decisions/0017-keycloak-oidc-phase17-scope.md) for the
+full reasoning). Scoped honestly and minimally: because
+`JwtAuthGuard`/`PermissionsGuard`/`RequestContextService` and all
+`@RequirePermissions`/`@CurrentUser` call-sites key off `request.user`
+alone, never JWT internals, the only genuinely invasive part of adding an
+IdP is the login/token-issuance path — so Keycloak becomes an additional,
+opt-in way (`AUTH_OIDC_ENABLED`, default `false`) to obtain the app's own
+token pair for an *already-provisioned* local user, not a replacement for
+password login or a new identity-provisioning system. No JIT
+auto-provisioning: `AuthService.loginWithOidc` requires a verified-email ID
+token claim and resolves the same local `users` row `login()` would
+(`resolveLoginCandidate`), rejecting a Keycloak login for an email with no
+match rather than creating one. One new endpoint, `POST /auth/oidc/token`
+(`{ code, redirectUri, organizationSlug? }` → the same `AuthResponse` shape
+as `/auth/login`) — `OidcService` exchanges the code with Keycloak directly
+and verifies the returned ID token's signature via `jose`'s remote JWKS.
+`apps/web` owns the browser redirect dance (`/api/auth/oidc/start`,
+`/api/auth/oidc/callback`), setting the same httpOnly cookies password login
+already does — `apps/api` never needs to know about browsers or cookies.
+`docker-compose.yml` gained a `keycloak` service
+(`quay.io/keycloak/keycloak`, auto-importing a checked-in
+`docker/keycloak/realm-export.json` with one realm, one confidential
+client, and one seeded test user). `apps/api/test/oidc-login.e2e-spec.ts`
+drives a genuine authorization-code round trip against the real container
+(scraping the real login form, no mocked ID token). JIT auto-provisioning,
+OIDC logout/SLO propagation, multiple simultaneous realms, and mapping
+Keycloak realm roles to local permissions (authorization still comes
+entirely from local RBAC tables) remain open deferrals.
+
+## Phase 18 scope
+
+Microservices split — the last of the five originally-deferred
+infrastructure items (see
+[ADR 0018](../decisions/0018-microservices-split-phase18-scope.md) for the
+full reasoning). Extracts exactly one module, `notifications`, chosen for
+having the lowest real extraction cost of any schema-owning module (no
+other module imports `NotificationsService`, its only inbound coupling was
+two plain FK columns) while still proving every element of ADR 0001's
+recipe: own schema moved to its own database
+(`sales_platform_notifications`), in-process service calls replaced with an
+event client, deployed as a separate process
+(`apps/notifications-service`, port 4002). The key enabling discovery: the
+`domain.events` RabbitMQ topic exchange Phase 14 built for the audit
+pipeline already carries *every* domain event (not just audit-relevant
+ones) whenever `EVENT_BUS_TRANSPORT=rabbitmq`, so the new service's
+`DomainEventsConsumer` binds its own queue to that existing exchange with
+7 explicit routing keys — zero publish-side changes in the monolith. A new
+`NOTIFICATIONS_SERVICE_ENABLED` env var (default `false`) gates two things
+at once: `apps/api/src/app.module.ts` genuinely omits `NotificationsModule`
+from its `imports` array (verified with a real e2e 404, not assumed from
+NestJS docs), and `apps/web`'s gateway proxy routes `/notifications/*`
+requests to `NOTIFICATIONS_SERVICE_URL` instead of the monolith. Enabling
+it requires `EVENT_BUS_TRANSPORT=rabbitmq` — `apps/api` throws a clear
+startup error otherwise, since events silently never reaching the new
+service would be a far worse failure than refusing to boot. A one-time,
+idempotent backfill script copies pre-existing rows out of the monolith's
+`notifications` schema; there's no live dual-write migration path. This is
+the last of the five originally-deferred items from ADR 0001, but only one
+of ten schema-owning modules has actually been extracted — the *pattern*
+is proven, not "the split is finished." Extracting audit-log, the Temporal
+worker, or any other module remains gated on a concrete independent-
+scaling/ownership need, per ADR 0001's own stated trigger.

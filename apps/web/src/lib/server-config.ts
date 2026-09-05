@@ -2,6 +2,16 @@
 export const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? "http://localhost:4000";
 
 /**
+ * Server-only: base URL for the extracted apps/notifications-service
+ * (Phase 18's microservices split). Unset by default — the gateway proxy
+ * (src/app/api/gateway/[...path]/route.ts) only routes `/notifications/*`
+ * here when this is set, and falls back to API_INTERNAL_URL otherwise (the
+ * monolith serving it in-process, as it always has). See
+ * docs/decisions/0018-microservices-split-phase18-scope.md.
+ */
+export const NOTIFICATIONS_SERVICE_URL = process.env.NOTIFICATIONS_SERVICE_URL || undefined;
+
+/**
  * Server-only OIDC config for the SSO login redirect — the client only ever
  * sees NEXT_PUBLIC_OIDC_ENABLED (whether to render the button); building the
  * actual Keycloak authorize URL happens in /api/auth/oidc/start, server-side.

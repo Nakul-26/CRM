@@ -104,7 +104,7 @@ Postgres if OpenSearch fails. See
 [docs/architecture/overview.md#phase-15-scope](docs/architecture/overview.md#phase-15-scope)
 for exactly what's built vs. deferred.
 
-**Phase 16 (current):** Temporal — the third of the five
+**Phase 16:** Temporal — the third of the five
 originally-deferred infrastructure items. A real, pluggable
 `DunningOrchestrator` (`WORKFLOW_ENGINE=in-process|temporal`, default
 `in-process`) retries a failed subscription renewal charge up to 3 times
@@ -116,13 +116,39 @@ Temporal backend runs the same schedule as a real, durable workflow. See
 [docs/architecture/overview.md#phase-16-scope](docs/architecture/overview.md#phase-16-scope)
 for exactly what's built vs. deferred.
 
+**Phase 17:** Keycloak — the fourth of the five
+originally-deferred infrastructure items. A real, opt-in "Sign in with SSO"
+path (`AUTH_OIDC_ENABLED`, default `false`) authenticates an
+already-provisioned local user against a real Keycloak realm via the
+standard OIDC authorization-code flow, then issues the app's own token pair
+through the exact same path password login already uses — no JIT
+auto-provisioning, no change to `JwtAuthGuard`/`PermissionsGuard`/RBAC.
+Password login remains the only *required* path and the only one enabled by
+default. See
+[docs/architecture/overview.md#phase-17-scope](docs/architecture/overview.md#phase-17-scope)
+for exactly what's built vs. deferred.
+
+**Phase 18 (current):** Microservices split — the last of the
+five originally-deferred infrastructure items. Extracts the `notifications`
+module into a separately-deployable NestJS app
+(`apps/notifications-service`, opt-in via `NOTIFICATIONS_SERVICE_ENABLED`,
+default `false`) with its own Postgres database, fed entirely over RabbitMQ
+by binding to the same `domain.events` exchange Phase 14 built for the
+audit pipeline — zero publish-side changes in the monolith. When the flag
+is off, `apps/api` behaves exactly as before; when it's on, the monolith
+drops its own `NotificationsModule` entirely and `apps/web`'s gateway
+routes `/notifications/*` to the new service instead. See
+[docs/architecture/overview.md#phase-18-scope](docs/architecture/overview.md#phase-18-scope)
+for exactly what's built vs. deferred.
+
 ## Prerequisites
 
 - Node.js >= 20
 - pnpm >= 9 (`corepack enable` gives you this automatically)
-- Docker Desktop (for Postgres/Redis/Mailpit; RabbitMQ, OpenSearch, and
-  Temporal are optional — only needed if you set `EVENT_BUS_TRANSPORT=
-  rabbitmq`, `SEARCH_PROVIDER=opensearch`, or `WORKFLOW_ENGINE=temporal`)
+- Docker Desktop (for Postgres/Redis/Mailpit; RabbitMQ, OpenSearch,
+  Temporal, and Keycloak are optional — only needed if you set
+  `EVENT_BUS_TRANSPORT=rabbitmq`, `SEARCH_PROVIDER=opensearch`,
+  `WORKFLOW_ENGINE=temporal`, or `AUTH_OIDC_ENABLED=true`)
 
 ## Getting started
 
@@ -134,7 +160,7 @@ cp apps/web/.env.example apps/web/.env
 # Then edit apps/api/.env and set real JWT_ACCESS_SECRET / JWT_REFRESH_SECRET:
 #   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
-docker compose up -d          # Postgres, Redis, Mailpit (+ RabbitMQ, OpenSearch, Temporal, optional)
+docker compose up -d          # Postgres, Redis, Mailpit (+ RabbitMQ, OpenSearch, Temporal, Keycloak, optional)
 pnpm --filter @sales-platform/api db:migrate
 
 pnpm dev                      # builds shared packages, then starts api + web
@@ -148,22 +174,51 @@ pnpm dev                      # builds shared packages, then starts api + web
 Register the first organization at http://localhost:3000/register — that
 account becomes the org's Owner with every permission.
 
+### Optional: running the notifications service split (Phase 18)
+
+By default `pnpm dev` does **not** start `apps/notifications-service` and
+`apps/api` keeps `notifications` in-process — no extra setup needed. To try
+the split:
+
+```bash
+# apps/api/.env: set NOTIFICATIONS_SERVICE_ENABLED=true and EVENT_BUS_TRANSPORT=rabbitmq
+cp apps/notifications-service/.env.example apps/notifications-service/.env
+# edit apps/notifications-service/.env: DATABASE_URL, RABBITMQ_URL, JWT_ACCESS_SECRET
+#   (JWT_ACCESS_SECRET must match apps/api's — both verify the same tokens)
+
+pnpm --filter @sales-platform/notifications-service db:migrate
+pnpm --filter @sales-platform/notifications-service dev   # separate process, port 4002
+
+# apps/web/.env: set NOTIFICATIONS_SERVICE_URL=http://localhost:4002
+```
+
+`GET /api/v1/notifications` on `apps/api` now 404s (the module is genuinely
+gone from the monolith); the gateway proxy routes those requests to the new
+service instead. A one-time backfill script
+(`apps/notifications-service/scripts/backfill-from-monolith.ts`) copies
+pre-existing notification rows out of the monolith's database if you're
+flipping the flag on an already-populated environment.
+
 ## Testing
 
 ```bash
 pnpm --filter @sales-platform/api test        # unit tests, no database needed
 pnpm --filter @sales-platform/api test:e2e    # integration tests — needs docker compose up -d
+pnpm --filter @sales-platform/notifications-service test      # unit tests
+pnpm --filter @sales-platform/notifications-service test:e2e  # needs docker compose up -d
 ```
 
-The e2e suite creates/migrates its own `sales_platform_test` database on the
-same Postgres container automatically; it won't touch your dev data.
+The e2e suites create/migrate their own `sales_platform_test`/
+`sales_platform_notifications_test` databases on the same Postgres
+container automatically; they won't touch your dev data.
 
 ## Repository layout
 
 ```text
 apps/
-  web/     Next.js app — the only thing the browser talks to
-  api/     NestJS modular monolith (identity, crm, leads, sales, products, quotes, support, subscriptions, analytics, notifications modules)
+  web/                    Next.js app — the only thing the browser talks to
+  api/                    NestJS modular monolith (identity, crm, leads, sales, products, quotes, support, subscriptions, analytics, notifications modules)
+  notifications-service/  Optional, opt-in extracted notifications service (Phase 18) — off by default
 packages/
   contracts/   Zod schemas + shared TS types (auth, permissions, events, errors)
   config/      Zod-validated environment loading
@@ -173,10 +228,12 @@ docs/
   decisions/      ADRs
 ```
 
-## Why not [Keycloak / microservices]?
+## Why not [general SSO / microservices]?
 
 Deliberately deferred for now — see the ADR linked above for the reasoning
-and the concrete trigger for adding each one back.
+and the concrete trigger for adding each one back. This section also covers
+the microservices split (see below) since it's the last of the same
+five-item deferral list.
 
 RabbitMQ is partially adopted as of Phase 14: the audit pipeline can run
 through a durable queue (`EVENT_BUS_TRANSPORT=rabbitmq`), but every other
@@ -197,3 +254,25 @@ schedule with no new infrastructure, and the renewal-reminder job stays on
 its own simple cron job as ADR 0007 already established. General adoption
 for other multi-step processes is deferred until one has a concrete need —
 see [ADR 0016](docs/decisions/0016-temporal-dunning-phase16-scope.md).
+
+Keycloak/OIDC login is built and working as of Phase 17
+(`AUTH_OIDC_ENABLED=true`) — a real "Sign in with SSO" path for
+already-provisioned local users — but password login remains the only
+*required* path and the only one enabled by default. What's still deferred:
+JIT user auto-provisioning on first OIDC login, OIDC logout/SLO propagation
+back to Keycloak, multiple simultaneous realms/providers, mapping Keycloak
+realm roles onto local permissions (authorization stays entirely local
+RBAC), and replacing password login as the sole auth method — each a
+separable increment with no concrete need yet. See
+[ADR 0017](docs/decisions/0017-keycloak-oidc-phase17-scope.md).
+
+The microservices split is proven, not finished, as of Phase 18: one
+module (`notifications`) has actually been extracted into its own
+deployable service (`apps/notifications-service`) with its own database,
+decoupled entirely over RabbitMQ — validating ADR 0001's whole split recipe
+end to end — but it's opt-in (`NOTIFICATIONS_SERVICE_ENABLED=false` by
+default) and the other nine schema-owning modules remain in the monolith.
+Extracting any of them further stays gated on the same trigger ADR 0001
+always named: a concrete independent-scaling/ownership need for a specific
+team, not a general "more microservices" push. See
+[ADR 0018](docs/decisions/0018-microservices-split-phase18-scope.md).

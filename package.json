@@ -7,7 +7,7 @@
   },
   "packageManager": "pnpm@9.0.0",
   "scripts": {
-    "dev": "turbo run build --filter=\"./packages/*\" && turbo run dev",
+    "dev": "turbo run build --filter=\"./packages/*\" && turbo run dev --filter=\"!@sales-platform/notifications-service\"",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
