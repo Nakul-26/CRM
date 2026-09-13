@@ -21,6 +21,11 @@ process.env.CORS_ORIGIN ??= "http://localhost:3000";
 // still be exercised in e2e tests regardless of which provider is active
 // for checkout creation.
 process.env.STRIPE_WEBHOOK_SECRET ??= "whsec_test_secret_for_e2e_signature_verification";
+// Same reasoning: set for every spec so inbound-email.e2e-spec.ts's webhook
+// auth check (pure/local, no network) can be exercised without every other
+// spec needing to know about it.
+process.env.INBOUND_EMAIL_WEBHOOK_SECRET ??= "test_inbound_email_webhook_secret";
+process.env.INBOUND_EMAIL_DOMAIN ??= "inbound.sales-platform.test";
 // Left at its "in-process" default for every spec except rabbitmq-audit.e2e-spec.ts,
 // which sets EVENT_BUS_TRANSPORT=rabbitmq (and RABBITMQ_URL) before importing this
 // file — ??= means that override wins there and every other spec is unaffected.

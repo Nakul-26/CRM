@@ -33,7 +33,7 @@ export function TicketCommentThread({ ticketId }: { ticketId: string }) {
           {comments.map((c) => (
             <li key={c.id} className="rounded-md border border-border p-3">
               <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                <span>{c.isPublic ? "Public reply" : "Internal note"}</span>
+                <span>{c.source === "inbound_email" ? "Customer email reply" : c.isPublic ? "Public reply" : "Internal note"}</span>
                 <span>{new Date(c.createdAt).toLocaleString()}</span>
               </div>
               <p className="whitespace-pre-wrap">{c.body}</p>

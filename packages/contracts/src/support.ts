@@ -6,6 +6,9 @@ export type TicketStatus = (typeof TICKET_STATUSES)[number];
 export const TICKET_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
 
+export const TICKET_COMMENT_SOURCES = ["internal", "inbound_email"] as const;
+export type TicketCommentSource = (typeof TICKET_COMMENT_SOURCES)[number];
+
 export interface TicketDto {
   id: string;
   organizationId: string;
@@ -34,6 +37,7 @@ export interface TicketCommentDto {
   authorId: string | null;
   body: string;
   isPublic: boolean;
+  source: TicketCommentSource;
   createdAt: string;
 }
 
@@ -94,6 +98,19 @@ export const createTicketCommentSchema = z.object({
   isPublic: z.boolean().default(true),
 });
 export type CreateTicketCommentInput = z.infer<typeof createTicketCommentSchema>;
+
+// Generic, provider-agnostic shape a real inbound-email-parsing provider
+// (e.g. Postmark/Mailgun inbound routes) would forward — see
+// docs/decisions/0021-inbound-email-ticket-parsing-phase21-scope.md.
+export const inboundEmailWebhookSchema = z.object({
+  to: z.string().trim().min(1),
+  from: z.string().trim().min(1),
+  subject: z.string().trim().optional(),
+  text: z.string().optional(),
+  html: z.string().optional(),
+  messageId: z.string().trim().optional(),
+});
+export type InboundEmailWebhookInput = z.infer<typeof inboundEmailWebhookSchema>;
 
 export const createSlaPolicySchema = z.object({
   name: z.string().trim().min(1).max(200),

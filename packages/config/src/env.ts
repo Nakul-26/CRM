@@ -47,6 +47,17 @@ export const apiEnvSchema = z.object({
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
+  // INBOUND_EMAIL_DOMAIN only shapes the Reply-To address stamped on
+  // outbound ticket emails going forward — harmless if never used.
+  // INBOUND_EMAIL_WEBHOOK_SECRET gates POST /support/inbound-email: unset
+  // (default) means the endpoint rejects every request, so this feature is
+  // inert until a real inbound-email-parsing provider (e.g. a
+  // Postmark/Mailgun inbound route) is configured to forward parsed
+  // replies here with this secret. See
+  // docs/decisions/0021-inbound-email-ticket-parsing-phase21-scope.md.
+  INBOUND_EMAIL_DOMAIN: z.string().default("inbound.sales-platform.local"),
+  INBOUND_EMAIL_WEBHOOK_SECRET: z.string().optional(),
+
   // Only RABBITMQ_URL is needed when EVENT_BUS_TRANSPORT=rabbitmq; the
   // in-process default (EventEmitter2 only) needs neither.
   EVENT_BUS_TRANSPORT: z.enum(["in-process", "rabbitmq"]).default("in-process"),

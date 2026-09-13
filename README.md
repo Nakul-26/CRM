@@ -141,7 +141,7 @@ routes `/notifications/*` to the new service instead. See
 [docs/architecture/overview.md#phase-18-scope](docs/architecture/overview.md#phase-18-scope)
 for exactly what's built vs. deferred.
 
-**Phase 19 (current):** Notification preferences + email digest — chosen
+**Phase 19:** Notification preferences + email digest — chosen
 by the user once all five originally-deferred infrastructure items were
 done. A per-user `emailDelivery` preference (`off` (default) / `immediate`
 / `daily_digest`) adds an opt-in email channel on top of the existing 7
@@ -149,6 +149,25 @@ in-app notification types from Phase 9 — in-app notifications themselves
 are unaffected either way. Reachable from a "Notification settings" link
 in the topbar. See
 [docs/architecture/overview.md#phase-19-scope](docs/architecture/overview.md#phase-19-scope)
+for exactly what's built vs. deferred.
+
+**Phase 20:** Lead search frontend surface — closes the "no frontend
+surface for Leads-in-search" gap Phase 8 deliberately left open. The
+Accounts page's search typeahead now includes Leads (linking straight to
+`/leads/:id`) for a viewer with `leads.view` — no backend change, since
+Phase 8 already built full support for it. See
+[docs/architecture/overview.md#phase-20-scope](docs/architecture/overview.md#phase-20-scope)
+for exactly what's built vs. deferred.
+
+**Phase 21 (current):** Inbound email-to-ticket parsing — a customer's
+reply to a ticket email becomes a ticket comment (and reopens a
+resolved/closed ticket), closing the last remaining actionable deferred
+feature (ADR 0006 decision #10). No real SMTP-receiving server was built;
+`POST /support/inbound-email` is a generic webhook standing in for a real
+inbound-email-parsing provider, gated on its own shared secret
+(`INBOUND_EMAIL_WEBHOOK_SECRET`, unset by default — inert out of the box).
+See
+[docs/architecture/overview.md#phase-21-scope](docs/architecture/overview.md#phase-21-scope)
 for exactly what's built vs. deferred.
 
 ## Prerequisites

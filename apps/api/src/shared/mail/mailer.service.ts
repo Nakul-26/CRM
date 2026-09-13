@@ -8,6 +8,7 @@ export interface SendMailInput {
   subject: string;
   html: string;
   text: string;
+  replyTo?: string | null;
 }
 
 /**
@@ -36,6 +37,13 @@ export class MailerService {
       return;
     }
 
-    await this.transporter.sendMail({ from: this.from, to: input.to, subject: input.subject, html: input.html, text: input.text });
+    await this.transporter.sendMail({
+      from: this.from,
+      to: input.to,
+      subject: input.subject,
+      html: input.html,
+      text: input.text,
+      replyTo: input.replyTo ?? undefined,
+    });
   }
 }

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { boolean, index, integer, jsonb, pgSchema, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { isNull, relations } from "drizzle-orm";
+import { isNotNull, isNull, relations } from "drizzle-orm";
 import { organizations, users } from "./identity.schema";
 import { accounts, contacts } from "./crm.schema";
 
@@ -15,6 +15,11 @@ export const supportSchema = pgSchema("support");
 
 export const TICKET_STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
 export const TICKET_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+
+// "internal" is anything a staff member posts through the authenticated API;
+// "inbound_email" is a customer's reply, parsed off the inbound-email
+// webhook — see docs/decisions/0021-inbound-email-ticket-parsing-phase21-scope.md.
+export const TICKET_COMMENT_SOURCES = ["internal", "inbound_email"] as const;
 
 export const slaPolicies = supportSchema.table(
   "sla_policies",
@@ -66,6 +71,13 @@ export const tickets = supportSchema.table(
     resolutionDueAt: timestamp("resolution_due_at", { withTimezone: true }),
     firstRespondedAt: timestamp("first_responded_at", { withTimezone: true }),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    // Opaque credential embedded in the Reply-To address on outbound ticket
+    // emails (`ticket+<replyToken>@INBOUND_EMAIL_DOMAIN`) so a customer's
+    // reply can be correlated back to this ticket by the inbound-email
+    // webhook — same "possession of the token is the credential" trust
+    // model as quotes.shareToken. See
+    // docs/decisions/0021-inbound-email-ticket-parsing-phase21-scope.md.
+    replyToken: uuid("reply_token").notNull().$defaultFn(() => randomUUID()),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     createdBy: uuid("created_by"),
@@ -77,6 +89,7 @@ export const tickets = supportSchema.table(
     orgStatusIdx: index("tickets_org_status_idx").on(table.organizationId, table.status),
     accountIdx: index("tickets_account_idx").on(table.accountId),
     assigneeIdx: index("tickets_assignee_idx").on(table.assigneeId),
+    replyTokenUnique: uniqueIndex("tickets_reply_token_unique").on(table.replyToken),
   }),
 );
 
@@ -91,10 +104,21 @@ export const ticketComments = supportSchema.table(
     // Public comments notify the ticket's contact by email; internal notes
     // (isPublic: false) never do — see MailListener.
     isPublic: boolean("is_public").notNull().default(true),
+    // TICKET_COMMENT_SOURCES — not derived from authorId being null, since
+    // that's already overloaded (a deleted user's old comment also has a
+    // null authorId via onDelete: "set null").
+    source: text("source").notNull().default("internal"),
+    // The inbound-email webhook's Message-ID, used only for idempotency —
+    // a redelivered webhook with the same messageId is a no-op. Always null
+    // for "internal" comments.
+    externalMessageId: text("external_message_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     ticketIdx: index("ticket_comments_ticket_idx").on(table.ticketId, table.createdAt),
+    externalMessageIdUnique: uniqueIndex("ticket_comments_external_message_id_unique")
+      .on(table.externalMessageId)
+      .where(isNotNull(table.externalMessageId)),
   }),
 );
 

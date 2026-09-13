@@ -1,4 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type {
   AssignTicketInput,
@@ -7,6 +8,7 @@ import type {
   TicketStatus,
   UpdateTicketInput,
 } from "@sales-platform/contracts";
+import type { ApiEnv } from "@sales-platform/config";
 import { DATABASE_CONNECTION, type Database } from "../../../database/database.module";
 import { accounts, contacts, ticketComments, tickets } from "../../../database/schema";
 import { DomainEventBus } from "../../../shared/events/domain-event-bus";
@@ -56,7 +58,7 @@ function serializeTicket(row: TicketRow) {
 }
 
 function serializeComment(row: TicketCommentRow) {
-  return { ...row, createdAt: row.createdAt.toISOString() };
+  return { ...row, source: row.source as "internal" | "inbound_email", createdAt: row.createdAt.toISOString() };
 }
 
 @Injectable()
@@ -65,7 +67,13 @@ export class TicketsService {
     @Inject(DATABASE_CONNECTION) private readonly db: Database,
     private readonly events: DomainEventBus,
     private readonly slaPolicies: SlaPoliciesService,
+    private readonly config: ConfigService<ApiEnv, true>,
   ) {}
+
+  /** `ticket+<replyToken>@INBOUND_EMAIL_DOMAIN` — see docs/decisions/0021-inbound-email-ticket-parsing-phase21-scope.md. */
+  private buildReplyTo(replyToken: string): string {
+    return `ticket+${replyToken}@${this.config.get("INBOUND_EMAIL_DOMAIN", { infer: true })}`;
+  }
 
   async list(organizationId: string, filters?: { status?: TicketStatus; priority?: string; assigneeId?: string }) {
     const conditions = [eq(tickets.organizationId, organizationId), isNull(tickets.deletedAt)];
@@ -121,6 +129,7 @@ export class TicketsService {
         subject: ticket.subject,
         contactEmail: contact?.email ?? null,
         contactName: contact ? `${contact.firstName} ${contact.lastName}`.trim() : null,
+        replyTo: this.buildReplyTo(ticket.replyToken),
       },
     });
     return serializeTicket(ticket);
@@ -218,7 +227,7 @@ export class TicketsService {
 
     const [comment] = await this.db
       .insert(ticketComments)
-      .values({ organizationId, ticketId, authorId: actorId, body: input.body, isPublic: input.isPublic })
+      .values({ organizationId, ticketId, authorId: actorId, body: input.body, isPublic: input.isPublic, source: "internal" })
       .returning();
 
     if (input.isPublic && !ticket.firstRespondedAt) {
@@ -240,8 +249,83 @@ export class TicketsService {
         contactId: ticket.contactId,
         body: comment.body,
         isPublic: comment.isPublic,
+        source: "internal",
         contactEmail: contact?.email ?? null,
         contactName: contact ? `${contact.firstName} ${contact.lastName}`.trim() : null,
+        replyTo: input.isPublic ? this.buildReplyTo(ticket.replyToken) : null,
+      },
+    });
+    return serializeComment(comment);
+  }
+
+  /**
+   * The inbound-email webhook's only entry point into ticket data — looked
+   * up by replyToken alone (no organizationId filter), the same
+   * public-by-token model as quotes' shareToken lookup. Returns `null` if
+   * no ticket owns this token, `"duplicate"` if this exact external
+   * message was already recorded (idempotent redelivery), or the created
+   * comment. See docs/decisions/0021-inbound-email-ticket-parsing-phase21-scope.md.
+   */
+  async addInboundEmailComment(
+    replyToken: string,
+    input: { body: string; externalMessageId?: string },
+  ): Promise<ReturnType<typeof serializeComment> | "duplicate" | null> {
+    const [ticket] = await this.db
+      .select()
+      .from(tickets)
+      .where(and(eq(tickets.replyToken, replyToken), isNull(tickets.deletedAt)))
+      .limit(1);
+    if (!ticket) return null;
+
+    if (input.externalMessageId) {
+      const [existing] = await this.db
+        .select({ id: ticketComments.id })
+        .from(ticketComments)
+        .where(eq(ticketComments.externalMessageId, input.externalMessageId))
+        .limit(1);
+      if (existing) return "duplicate";
+    }
+
+    const [comment] = await this.db
+      .insert(ticketComments)
+      .values({
+        organizationId: ticket.organizationId,
+        ticketId: ticket.id,
+        authorId: null,
+        body: input.body,
+        isPublic: true,
+        source: "inbound_email",
+        externalMessageId: input.externalMessageId,
+      })
+      .returning();
+
+    // A customer reply always reopens a resolved/closed ticket — always
+    // reopenable, same as a staff-driven status change.
+    if (ticket.status === "resolved" || ticket.status === "closed") {
+      const [updated] = await this.db
+        .update(tickets)
+        .set({ status: "open", updatedAt: new Date() })
+        .where(eq(tickets.id, ticket.id))
+        .returning();
+      this.events.publish({
+        eventType: "ticket.status_changed",
+        organizationId: ticket.organizationId,
+        payload: { ticketId: ticket.id, accountId: updated.accountId, from: ticket.status, to: "open" },
+      });
+    }
+
+    // Deliberately no contactEmail/replyTo — a customer's own reply must
+    // never be echoed back to them (see MailListener.onTicketCommentAdded).
+    this.events.publish({
+      eventType: "ticket.comment_added",
+      organizationId: ticket.organizationId,
+      payload: {
+        ticketId: ticket.id,
+        accountId: ticket.accountId,
+        contactId: ticket.contactId,
+        body: comment.body,
+        isPublic: true,
+        source: "inbound_email",
       },
     });
     return serializeComment(comment);

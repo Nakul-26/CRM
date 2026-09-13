@@ -214,6 +214,7 @@ see [ADR 0012](../decisions/0012-audit-log-streaming-phase12-scope.md).
 | Separate databases per module, for the remaining nine modules | A module needs independent scaling/ownership by a separate team. Phase 18 extracted `notifications` as a first, real proof of the pattern (own database, RabbitMQ-mediated decoupling, its own deployable process) — see [ADR 0018](../decisions/0018-microservices-split-phase18-scope.md) — but it's opt-in (`NOTIFICATIONS_SERVICE_ENABLED=false` by default) and no other module has a concrete need yet. |
 | Notification delivery preferences/settings, email digests of notifications | Resolved in Phase 19 — see [ADR 0019](../decisions/0019-notification-preferences-phase19-scope.md). Phase 9 built the in-app bell/unread-state center itself, see [ADR 0009](../decisions/0009-notifications-phase9-scope.md). |
 | A global "notify on every event" firehose (every domain event creating a notification, not just the 7 curated ones) | A concrete need shows up — explicitly named and left deferred by both ADR 0009 and [ADR 0019](../decisions/0019-notification-preferences-phase19-scope.md), which added delivery preferences/digest for the existing 7 without expanding which events create a notification. |
+| No frontend surface consuming the `lead` search type | Resolved in Phase 20 — see [ADR 0020](../decisions/0020-lead-search-frontend-phase20-scope.md). Phase 8 built the backend support itself, see [ADR 0008](../decisions/0008-analytics-automation-phase8-scope.md). |
 
 ## Phase 1 scope
 
@@ -345,7 +346,8 @@ use of that extension point after `lead.converted`, Phase 4's
 `opportunity.*` events, and Phase 5's `quote.*` events. Inbound
 email-to-ticket parsing (a customer replying by email to add a ticket
 comment) is out of scope — recorded in ADR 0006 as a materially bigger,
-deliberately deferred feature.
+deliberately deferred feature. Resolved in Phase 21, see
+[ADR 0021](../decisions/0021-inbound-email-ticket-parsing-phase21-scope.md).
 
 ## Phase 7 scope
 
@@ -726,3 +728,44 @@ that service isn't held to feature parity with the in-process module. The
 new `/settings/notifications` page is reachable from a link in
 `AppTopbar`, not `NAV_SECTIONS` — that array mirrors the brief's fixed
 information architecture, which this user-scoped setting isn't part of.
+
+## Phase 20 scope
+
+Lead search frontend surface — chosen by the user from two candidate
+deferred features after Phase 19. Resolves the "no new frontend surface for
+Leads-in-search" cut [ADR 0008](../decisions/0008-analytics-automation-phase8-scope.md)
+decision #9 explicitly deferred: Phase 8 already built full backend support
+(`GET /search?types=account,contact,lead`, `pg_trgm` fuzzy ranking,
+`leads.view`-gated) but no frontend consumed the `lead` type. See
+[ADR 0020](../decisions/0020-lead-search-frontend-phase20-scope.md). The
+Accounts page's existing inline typeahead (`use-search.ts`, its only
+consumer) now requests `types=account,contact,lead` when the viewer has
+`leads.view` — the same gate the backend already applies — and a lead
+result links straight to its real detail page (`/leads/${id}`), the way an
+account result always has. No backend file changed; this was a pure
+frontend diff closing a gap the backend had been ready for since Phase 8.
+
+## Phase 21 scope
+
+Inbound email-to-ticket parsing — the last remaining actionable deferred
+feature, resolving [ADR 0006](../decisions/0006-support-phase6-scope.md)
+decision #10's explicit cut. No real SMTP-receiving server was built (the
+same "integrate with an external system, don't build one" boundary as
+Keycloak/RabbitMQ/Temporal/OpenSearch); instead a generic, provider-agnostic
+webhook, `POST /support/inbound-email`, stands in for what a real
+inbound-email-parsing provider (Postmark/Mailgun inbound routes, etc.)
+would forward to. A new `tickets.replyToken` (uuid, generated per ticket)
+is embedded as the Reply-To address on outbound ticket emails
+(`ticket+<replyToken>@INBOUND_EMAIL_DOMAIN`); a customer's reply is
+correlated back to its ticket purely by that token, the same
+"possession-is-the-credential" trust model as quotes' `shareToken`
+([ADR 0005](../decisions/0005-quotations-phase5-scope.md)) — no
+sender-address verification. The webhook itself is gated on a static
+`INBOUND_EMAIL_WEBHOOK_SECRET` (unset by default, so it always 401s until
+configured — this feature is fully inert out of the box). A new
+`ticket_comments.source` column (`"internal" | "inbound_email"`)
+distinguishes a customer's inbound reply from staff-authored comments; an
+inbound reply never bumps `firstRespondedAt` but always reopens a
+resolved/closed ticket, and `MailListener` never echoes it back to its own
+sender. See [ADR 0021](../decisions/0021-inbound-email-ticket-parsing-phase21-scope.md)
+for the full decision record.

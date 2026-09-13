@@ -23,10 +23,14 @@ export default function AccountsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const { data: searchResults } = useSearch(query);
 
   const canCreate = currentUser?.permissions.includes("crm.accounts.create");
   const canDelete = currentUser?.permissions.includes("crm.accounts.delete");
+  // See docs/decisions/0020-lead-search-frontend-phase20-scope.md — this is
+  // the one existing frontend search surface ADR 0008 left Leads out of;
+  // gated the same way the backend itself gates the "lead" search type.
+  const canViewLeads = currentUser?.permissions.includes("leads.view");
+  const { data: searchResults } = useSearch(query, canViewLeads ? ["account", "contact", "lead"] : undefined);
 
   const onCreate = async (input: CreateAccountInput) => {
     setError(null);
@@ -82,14 +86,18 @@ export default function AccountsPage() {
           <CardTitle className="text-base">Search</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <Input placeholder="Search accounts and contacts..." value={query} onChange={(e) => setQuery(e.target.value)} />
+          <Input
+            placeholder={canViewLeads ? "Search accounts, contacts, and leads..." : "Search accounts and contacts..."}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
           {query.trim() && (
             <div className="flex flex-col gap-1">
               {searchResults?.length ? (
                 searchResults.map((r) => (
                   <Link
                     key={`${r.type}-${r.id}`}
-                    href={r.type === "account" ? `/crm/accounts/${r.id}` : "/crm/contacts"}
+                    href={r.type === "account" ? `/crm/accounts/${r.id}` : r.type === "lead" ? `/leads/${r.id}` : "/crm/contacts"}
                     className="rounded-md px-2 py-1.5 text-sm hover:bg-muted"
                   >
                     <span className="text-muted-foreground">[{r.type}]</span> {r.label}
